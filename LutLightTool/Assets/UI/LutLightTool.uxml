@@ -1,32 +1,53 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/LutLightTool.uss?fileID=7433441132597879392&amp;guid=2b38d7b8e55504113b9bf27d65ae35e3&amp;type=3#LutLightTool" />
     <ui:VisualElement class="root">
-        <!-- Left Panel (2/5) -->
         <ui:VisualElement class="left-panel">
             <ui:Label text="LutLight Tool" class="title" />
-
             <ui:Button name="upload-button" text="Upload" class="upload-button" />
-
             <ui:VisualElement class="shadow-controls">
                 <ui:Label text="Shadow Degree" class="section-title" />
                 <ui:VisualElement class="shadow-input-row">
                     <ui:Toggle name="shadow-degree-toggle" text="Enable" />
                     <ui:Label text="Degree:" />
-                    <ui:TextField name="shadow-degree-input" value="2" class="degree-input" />
+                    <ui:IntegerField name="shadow-degree-input" value="2" class="degree-input" />
                 </ui:VisualElement>
             </ui:VisualElement>
-
-            <ui:Label name="info-label" text="" class="info-label" />
-
-            <ui:ScrollView class="pallet-scroll">
-                <ui:VisualElement name="pallet-container" class="pallet-container" />
-            </ui:ScrollView>
+            <ui:Label name="info-label" class="info-label" />
+            <ui:VisualElement class="color-editor">
+                <ui:Label text="Color Editor" class="section-title" />
+                <ui:VisualElement name="selected-color-preview" class="selected-color-preview" />
+                <ui:Label name="position-label" text="Position: (0, 0)" class="position-label" />
+                <ui:VisualElement class="rgba-inputs">
+                    <ui:VisualElement class="rgba-row">
+                        <ui:Label text="R:" class="rgba-label" />
+                        <ui:IntegerField name="r-input" value="0" class="rgba-input" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="rgba-row">
+                        <ui:Label text="G:" class="rgba-label" />
+                        <ui:IntegerField name="g-input" value="0" class="rgba-input" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="rgba-row">
+                        <ui:Label text="B:" class="rgba-label" />
+                        <ui:IntegerField name="b-input" value="0" class="rgba-input" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="rgba-row">
+                        <ui:Label text="A:" class="rgba-label" />
+                        <ui:IntegerField name="a-input" value="255" class="rgba-input" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:Button name="interpolate-button" text="Interpolate" class="interpolate-button" />
+            </ui:VisualElement>
         </ui:VisualElement>
-
-        <!-- Right Panel (3/5) -->
         <ui:VisualElement class="right-panel">
             <ui:Label text="Preview" class="section-title" />
             <ui:VisualElement name="preview-container" class="preview-container">
                 <ui:Label name="waiting-label" text="Waiting..." class="waiting-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="pallet-section">
+                <ui:Label text="Color Pallet (Row 0 = Base, Readonly)" class="section-title" />
+                <ui:ScrollView class="pallet-scroll">
+                    <ui:VisualElement name="pallet-container" class="pallet-container" />
+                </ui:ScrollView>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

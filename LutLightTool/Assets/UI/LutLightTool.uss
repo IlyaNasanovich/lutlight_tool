@@ -9,6 +9,7 @@
     width: 40%;
     padding: 10px;
     background-color: #2a2a2a;
+    overflow-y: auto;
 }
 
 .right-panel {
@@ -22,24 +23,26 @@
     font-size: 20px;
     font-weight: bold;
     color: #ffffff;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
 }
 
 .section-title {
     font-size: 14px;
     font-weight: bold;
     color: #cccccc;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    margin-top: 10px;
 }
 
 .upload-button {
-    height: 40px;
-    font-size: 16px;
-    margin-bottom: 20px;
+    height: 35px;
+    font-size: 14px;
+    margin-bottom: 15px;
 }
 
+/* Shadow Controls */
 .shadow-controls {
-    margin-bottom: 20px;
+    margin-bottom: 15px;
 }
 
 .shadow-input-row {
@@ -49,12 +52,79 @@
 }
 
 .degree-input {
-    width: 60px;
+    width: 80px;
+    height: 28px;
+    flex-shrink: 0;
+    font-size: 10px;
 }
 
 .info-label {
     color: #aaaaaa;
     margin-bottom: 10px;
+    font-size: 12px;
+}
+
+/* Color Editor */
+.color-editor {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #333333;
+    border-radius: 4px;
+}
+
+.selected-color-preview {
+    width: 100%;
+    height: 15px;
+    margin-bottom: 10px;
+    border-width: 1px;
+    border-color: #ffffff;
+    border-radius: 2px;
+}
+
+.position-label {
+    color: #aaaaaa;
+    margin-bottom: 10px;
+    font-size: 12px;
+}
+
+.rgba-inputs {
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.rgba-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.rgba-label {
+    width: 25px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.rgba-input {
+    width: 70px;
+    height: 28px;
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+.interpolate-button {
+    width: 100%;
+    height: 30px;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+/* Pallet Display */
+.pallet-section {
+    flex-grow: 1;
+    flex-direction: column;
 }
 
 .pallet-scroll {
@@ -63,16 +133,18 @@
 
 .pallet-container {
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
 }
 
 .preview-container {
-    flex-grow: 1;
+    flex-direction: column;
+    height: 180px;
+    margin-bottom: 15px;
     justify-content: center;
     align-items: center;
 }
 
 .waiting-label {
-    font-size: 24px;
+    font-size: 20px;
     color: #888888;
 }

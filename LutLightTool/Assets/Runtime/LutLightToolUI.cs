@@ -17,21 +17,30 @@ namespace LutLight2D
         private int _shadowDegree = 2;
         private bool _shadowDegreeEnabled = true;
 
+        // Navigation state
+        private int _selectedColumn = 0;
+        private int _selectedRow = 0;
+
         // UI Elements
         private Button _uploadButton;
         private Toggle _shadowDegreeToggle;
-        private TextField _shadowDegreeInput;
+        private IntegerField _shadowDegreeInput;
         private Label _infoLabel;
         private VisualElement _previewContainer;
         private VisualElement _palletContainer;
         private Label _waitingLabel;
+
+        // Color editor elements
+        private VisualElement _selectedColorPreview;
+        private IntegerField _rInput, _gInput, _bInput, _aInput;
+        private Button _interpolateButton;
+        private Label _positionLabel;
 
         private void Awake()
         {
             if (_uiDocument == null)
                 _uiDocument = GetComponent<UIDocument>();
 
-            // Ensure the UIDocument has a visual tree
             if (_uiDocument.visualTreeAsset == null)
             {
                 Debug.LogError("UIDocument has no visual tree asset assigned!");
@@ -40,63 +49,63 @@ namespace LutLight2D
 
         private void OnEnable()
         {
-            // Wait a frame for the UIDocument to initialize
             StartCoroutine(InitializeUI());
         }
 
         private System.Collections.IEnumerator InitializeUI()
         {
-            yield return null; // Wait one frame
+            yield return null;
 
             var root = _uiDocument.rootVisualElement;
-
-            // Debug: Print all elements with names
-            Debug.Log($"Root child count: {root.childCount}");
-            foreach (var child in root.Children())
-            {
-                Debug.Log($"Child: {child.name} ({child.GetType().Name})");
-            }
 
             // Get UI elements
             _uploadButton = root.Q<Button>("upload-button");
             _shadowDegreeToggle = root.Q<Toggle>("shadow-degree-toggle");
-            _shadowDegreeInput = root.Q<TextField>("shadow-degree-input");
+            _shadowDegreeInput = root.Q<IntegerField>("shadow-degree-input");
             _infoLabel = root.Q<Label>("info-label");
             _previewContainer = root.Q<VisualElement>("preview-container");
             _palletContainer = root.Q<VisualElement>("pallet-container");
             _waitingLabel = root.Q<Label>("waiting-label");
 
-            // Debug: Check which elements are null
-            Debug.Log($"upload-button: {_uploadButton != null}");
-            Debug.Log($"shadow-degree-toggle: {_shadowDegreeToggle != null}");
-            Debug.Log($"shadow-degree-input: {_shadowDegreeInput != null}");
-            Debug.Log($"info-label: {_infoLabel != null}");
-            Debug.Log($"preview-container: {_previewContainer != null}");
-            Debug.Log($"pallet-container: {_palletContainer != null}");
-            Debug.Log($"waiting-label: {_waitingLabel != null}");
+            // Color editor elements
+            _selectedColorPreview = root.Q<VisualElement>("selected-color-preview");
+            _rInput = root.Q<IntegerField>("r-input");
+            _gInput = root.Q<IntegerField>("g-input");
+            _bInput = root.Q<IntegerField>("b-input");
+            _aInput = root.Q<IntegerField>("a-input");
+            _interpolateButton = root.Q<Button>("interpolate-button");
+            _positionLabel = root.Q<Label>("position-label");
 
-            // Register callbacks only if elements exist
+            // Register callbacks
             if (_uploadButton != null)
                 _uploadButton.RegisterCallback<ClickEvent>(OnUploadClicked);
-            else
-                Debug.LogError("upload-button not found!");
 
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.RegisterCallback<ChangeEvent<bool>>(OnShadowDegreeToggleChanged);
-            else
-                Debug.LogError("shadow-degree-toggle not found!");
 
             if (_shadowDegreeInput != null)
             {
-                _shadowDegreeInput.RegisterCallback<ChangeEvent<string>>(OnShadowDegreeInputChanged);
-                // Initialize
-                _shadowDegreeInput.value = "2";
+                _shadowDegreeInput.RegisterCallback<ChangeEvent<int>>(OnShadowDegreeInputChanged);
+                _shadowDegreeInput.value = 2;
             }
-            else
-                Debug.LogError("shadow-degree-input not found!");
 
+            // Color input callbacks
+            if (_rInput != null) _rInput.RegisterCallback<ChangeEvent<int>>(e => OnColorInputChanged());
+            if (_gInput != null) _gInput.RegisterCallback<ChangeEvent<int>>(e => OnColorInputChanged());
+            if (_bInput != null) _bInput.RegisterCallback<ChangeEvent<int>>(e => OnColorInputChanged());
+            if (_aInput != null) _aInput.RegisterCallback<ChangeEvent<int>>(e => OnColorInputChanged());
+
+            // Interpolate callback
+            if (_interpolateButton != null)
+                _interpolateButton.RegisterCallback<ClickEvent>(OnInterpolateClicked);
+
+            // Initialize
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.value = true;
+
+            // Register keyboard input
+            root.RegisterCallback<KeyDownEvent>(OnKeyDown);
+            root.focusable = true;
         }
 
         private void OnDisable()
@@ -108,7 +117,155 @@ namespace LutLight2D
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.UnregisterCallback<ChangeEvent<bool>>(OnShadowDegreeToggleChanged);
             if (_shadowDegreeInput != null)
-                _shadowDegreeInput.UnregisterCallback<ChangeEvent<string>>(OnShadowDegreeInputChanged);
+                _shadowDegreeInput.UnregisterCallback<ChangeEvent<int>>(OnShadowDegreeInputChanged);
+        }
+
+        private void OnKeyDown(KeyDownEvent evt)
+        {
+            if (_colorPallet.Count == 0) return;
+
+            switch (evt.keyCode)
+            {
+                case KeyCode.W:
+                case KeyCode.UpArrow:
+                    MoveSelection(0, -1);
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.S:
+                case KeyCode.DownArrow:
+                    MoveSelection(0, 1);
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.A:
+                case KeyCode.LeftArrow:
+                    MoveSelection(-1, 0);
+                    evt.StopPropagation();
+                    break;
+                case KeyCode.D:
+                case KeyCode.RightArrow:
+                    MoveSelection(1, 0);
+                    evt.StopPropagation();
+                    break;
+            }
+        }
+
+        private void MoveSelection(int deltaX, int deltaY)
+        {
+            if (_colorPallet.Count == 0) return;
+
+            int maxColumn = _colorPallet[0].Count - 1;
+            int maxRow = _colorPallet.Count - 1;
+
+            // Clamp values to valid range
+            _selectedColumn = Mathf.Clamp(_selectedColumn + deltaX, 0, maxColumn);
+            _selectedRow = Mathf.Clamp(_selectedRow + deltaY, 0, maxRow);
+
+            UpdateSelectionDisplay();
+        }
+
+        private void UpdateSelectionDisplay()
+        {
+            if (_colorPallet.Count == 0) return;
+
+            // Validate selection is within bounds
+            if (_selectedRow >= _colorPallet.Count)
+                _selectedRow = _colorPallet.Count - 1;
+            if (_selectedColumn >= _colorPallet[_selectedRow].Count)
+                _selectedColumn = _colorPallet[_selectedRow].Count - 1;
+
+            // Update position label
+            if (_positionLabel != null)
+            {
+                string rowType = _selectedRow == 0 ? " (Base - Readonly)" : "";
+                _positionLabel.text = $"Position: ({_selectedColumn}, {_selectedRow}){rowType}";
+            }
+
+            // Get selected color
+            Color selectedColor = _colorPallet[_selectedRow][_selectedColumn];
+
+            // Update color preview
+            if (_selectedColorPreview != null)
+                _selectedColorPreview.style.backgroundColor = new StyleColor(selectedColor);
+
+            // Update RGBA inputs (0-255 range)
+            if (_rInput != null) _rInput.value = Mathf.RoundToInt(selectedColor.r * 255);
+            if (_gInput != null) _gInput.value = Mathf.RoundToInt(selectedColor.g * 255);
+            if (_bInput != null) _bInput.value = Mathf.RoundToInt(selectedColor.b * 255);
+            if (_aInput != null) _aInput.value = Mathf.RoundToInt(selectedColor.a * 255);
+
+            // Disable inputs if row 0 (readonly)
+            bool isReadonly = _selectedRow == 0;
+            if (_rInput != null) _rInput.SetEnabled(!isReadonly);
+            if (_gInput != null) _gInput.SetEnabled(!isReadonly);
+            if (_bInput != null) _bInput.SetEnabled(!isReadonly);
+            if (_aInput != null) _aInput.SetEnabled(!isReadonly);
+
+            // Redraw color pallet with selection highlight
+            DrawColorPallet();
+        }
+
+        private void OnColorInputChanged()
+        {
+            if (_colorPallet.Count == 0) return;
+
+            // Validate selection is within bounds
+            if (_selectedRow >= _colorPallet.Count || _selectedColumn >= _colorPallet[_selectedRow].Count)
+                return;
+
+            // Row 0 is readonly (base colors)
+            if (_selectedRow == 0)
+                return;
+
+            // Get RGBA values from IntegerFields
+            int r = Mathf.Clamp(_rInput.value, 0, 255);
+            int g = Mathf.Clamp(_gInput.value, 0, 255);
+            int b = Mathf.Clamp(_bInput.value, 0, 255);
+            int a = Mathf.Clamp(_aInput.value, 0, 255);
+
+            Color newColor = new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+
+            // Update the color in the pallet
+            _colorPallet[_selectedRow][_selectedColumn] = newColor;
+
+            // Update preview
+            if (_selectedColorPreview != null)
+                _selectedColorPreview.style.backgroundColor = new StyleColor(newColor);
+
+            // Redraw
+            DrawColorPallet();
+        }
+
+        private void OnInterpolateClicked(ClickEvent evt)
+        {
+            if (_colorPallet.Count == 0) return;
+
+            int column = _selectedColumn;
+            int rowCount = _colorPallet.Count;
+
+            // Need at least 3 rows (base + 2 shadow levels) to interpolate
+            if (rowCount < 3) return;
+
+            // Validate column is within bounds for all rows
+            for (int i = 0; i < rowCount; i++)
+            {
+                if (column >= _colorPallet[i].Count)
+                    return;
+            }
+
+            // Row 0 is readonly base, interpolate between row 1 and last row
+            Color firstColor = _colorPallet[1][column];
+            Color lastColor = _colorPallet[rowCount - 1][column];
+
+            // Interpolate colors between first and last (skip row 0)
+            for (int i = 2; i < rowCount - 1; i++)
+            {
+                float t = (float)(i - 1) / (rowCount - 2);
+                _colorPallet[i][column] = Color.Lerp(firstColor, lastColor, t);
+            }
+
+            // Redraw
+            DrawColorPallet();
+            UpdateSelectionDisplay();
         }
 
         private void OnUploadClicked(ClickEvent evt)
@@ -196,28 +353,29 @@ namespace LutLight2D
         private void OnShadowDegreeToggleChanged(ChangeEvent<bool> evt)
         {
             _shadowDegreeEnabled = evt.newValue;
-            _shadowDegreeInput.SetEnabled(_shadowDegreeEnabled);
+            if (_shadowDegreeInput != null)
+                _shadowDegreeInput.SetEnabled(_shadowDegreeEnabled);
 
             if (_shadowDegreeEnabled && _spriteAtlas != null)
             {
-                if (int.TryParse(_shadowDegreeInput.value, out int degree) && degree >= 2)
+                if (_shadowDegreeInput.value >= 2)
                 {
-                    _shadowDegree = degree;
+                    _shadowDegree = _shadowDegreeInput.value;
                     GenerateColorPallet();
                 }
             }
         }
 
-        private void OnShadowDegreeInputChanged(ChangeEvent<string> evt)
+        private void OnShadowDegreeInputChanged(ChangeEvent<int> evt)
         {
             if (!_shadowDegreeEnabled || _spriteAtlas == null) return;
 
-            if (int.TryParse(evt.newValue, out int degree) && degree >= 2)
+            if (evt.newValue >= 2)
             {
-                _shadowDegree = degree;
+                _shadowDegree = evt.newValue;
                 GenerateColorPallet();
             }
-            else
+            else if (_infoLabel != null)
             {
                 _infoLabel.text = "Must be a number >= 2";
             }
@@ -231,14 +389,18 @@ namespace LutLight2D
             _spriteAtlas.filterMode = FilterMode.Point;
 
             // Hide waiting label, show preview
-            _waitingLabel.style.display = DisplayStyle.None;
+            if (_waitingLabel != null)
+                _waitingLabel.style.display = DisplayStyle.None;
 
             // Create preview image
-            _previewContainer.Clear();
-            var previewImage = new Image();
-            previewImage.image = _spriteAtlas;
-            previewImage.scaleMode = ScaleMode.ScaleToFit;
-            _previewContainer.Add(previewImage);
+            if (_previewContainer != null)
+            {
+                _previewContainer.Clear();
+                var previewImage = new Image();
+                previewImage.image = _spriteAtlas;
+                previewImage.scaleMode = ScaleMode.ScaleToFit;
+                _previewContainer.Add(previewImage);
+            }
 
             GenerateColorPallet();
         }
@@ -249,14 +411,14 @@ namespace LutLight2D
 
             // Get all unique colors accounting for alpha channel
             _uniqueColors = GetUniqueColors(_spriteAtlas);
-            
-            var temp = _uniqueColors.Select(c => 
+
+            var temp = _uniqueColors.Select(c =>
             {
                 Color.RGBToHSV(c, out float h, out float s, out float v);
                 return (color: c, h, s, v);
             }).ToList();
 
-            // Sort by R, G, B, A
+            // Sort by HSV
             _uniqueColors = temp
                 .OrderBy(x => x.h)
                 .ThenBy(x => x.s)
@@ -268,7 +430,7 @@ namespace LutLight2D
             // Generate color pallet
             _colorPallet = new List<List<Color>>();
 
-            // Add base level (level 0) - read only
+            // Add base level (level 0)
             _colorPallet.Add(new List<Color>(_uniqueColors));
 
             // Add shadow levels
@@ -278,18 +440,23 @@ namespace LutLight2D
                 var level = new List<Color>();
                 foreach (var color in _uniqueColors)
                 {
-                    // Darken color for shadow levels
                     float factor = 1f - (float)i / shadowLevels;
                     level.Add(new Color(color.r * factor, color.g * factor, color.b * factor, color.a));
                 }
                 _colorPallet.Add(level);
             }
 
+            // Reset selection
+            _selectedColumn = 0;
+            _selectedRow = 0;
+
             // Update info label
-            _infoLabel.text = $"Colors: {_uniqueColors.Count} | Levels: {_colorPallet.Count}";
+            if (_infoLabel != null)
+                _infoLabel.text = $"Colors: {_uniqueColors.Count} | Levels: {_colorPallet.Count}";
 
             // Draw color pallet
             DrawColorPallet();
+            UpdateSelectionDisplay();
         }
 
         private List<Color> GetUniqueColors(Texture2D texture)
@@ -299,7 +466,6 @@ namespace LutLight2D
 
             foreach (var pixel in pixels)
             {
-                // Only add non-transparent pixels
                 if (pixel.a > 0.01f)
                 {
                     uniqueColors.Add(pixel);
@@ -311,6 +477,8 @@ namespace LutLight2D
 
         private void DrawColorPallet()
         {
+            if (_palletContainer == null) return;
+
             _palletContainer.Clear();
 
             if (_colorPallet.Count == 0) return;
@@ -318,18 +486,35 @@ namespace LutLight2D
             int width = _colorPallet[0].Count;
             int height = _colorPallet.Count;
 
-            // Limit display to avoid performance issues
-            int maxDisplayWidth = 64;
-            int maxDisplayHeight = 32;
-            int displayWidth = Mathf.Min(width, maxDisplayWidth);
-            int displayHeight = Mathf.Min(height, maxDisplayHeight);
+            // Sliding window: show up to 30 columns centered on selection
+            int windowSize = 30;
+            int halfWindow = windowSize / 2;
 
-            for (int y = 0; y < displayHeight; y++)
+            int startColumn = Mathf.Max(0, _selectedColumn - halfWindow);
+            int endColumn = Mathf.Min(width - 1, startColumn + windowSize - 1);
+
+            // Adjust start if we're near the end
+            if (endColumn - startColumn < windowSize - 1)
             {
+                startColumn = Mathf.Max(0, endColumn - windowSize + 1);
+            }
+
+            for (int y = 0; y < height; y++)
+            {
+                // Add row label for row 0
+                if (y == 0)
+                {
+                    var rowLabel = new Label("Base (Readonly):");
+                    rowLabel.style.fontSize = 10;
+                    rowLabel.style.color = new StyleColor(Color.gray);
+                    rowLabel.style.marginBottom = 2;
+                    _palletContainer.Add(rowLabel);
+                }
+
                 var row = new VisualElement();
                 row.style.flexDirection = FlexDirection.Row;
 
-                for (int x = 0; x < displayWidth; x++)
+                for (int x = startColumn; x <= endColumn; x++)
                 {
                     if (x < _colorPallet[y].Count)
                     {
@@ -337,19 +522,60 @@ namespace LutLight2D
                         cell.style.width = 12;
                         cell.style.height = 12;
                         cell.style.backgroundColor = new StyleColor(_colorPallet[y][x]);
+
+                        // Dim row 0 to indicate readonly
+                        if (y == 0)
+                        {
+                            cell.style.opacity = 0.7f;
+                        }
+
+                        // Highlight selected cell
+                        if (x == _selectedColumn && y == _selectedRow)
+                        {
+                            cell.style.borderTopWidth = 2;
+                            cell.style.borderBottomWidth = 2;
+                            cell.style.borderLeftWidth = 2;
+                            cell.style.borderRightWidth = 2;
+                            cell.style.borderTopColor = new StyleColor(Color.white);
+                            cell.style.borderBottomColor = new StyleColor(Color.white);
+                            cell.style.borderLeftColor = new StyleColor(Color.white);
+                            cell.style.borderRightColor = new StyleColor(Color.white);
+                        }
+
+                        // Capture x,y for callback
+                        int capturedX = x;
+                        int capturedY = y;
+                        cell.RegisterCallback<ClickEvent>(e =>
+                        {
+                            _selectedColumn = capturedX;
+                            _selectedRow = capturedY;
+                            UpdateSelectionDisplay();
+                        });
+
                         row.Add(cell);
                     }
                 }
 
                 _palletContainer.Add(row);
+
+                // Add separator after row 0
+                if (y == 0)
+                {
+                    var separator = new VisualElement();
+                    separator.style.height = 2;
+                    separator.style.backgroundColor = new StyleColor(new Color(0.5f, 0.5f, 0.5f, 0.5f));
+                    separator.style.marginTop = 3;
+                    separator.style.marginBottom = 3;
+                    _palletContainer.Add(separator);
+                }
             }
 
-            if (width > maxDisplayWidth || height > maxDisplayHeight)
-            {
-                var note = new Label($"Showing {displayWidth}x{displayHeight} of {width}x{height}");
-                note.style.fontSize = 10;
-                _palletContainer.Add(note);
-            }
+            // Show window info
+            var windowInfo = new Label($"Columns {startColumn}-{endColumn} of {width} | WASD/Arrows to navigate");
+            windowInfo.style.fontSize = 10;
+            windowInfo.style.color = new StyleColor(Color.gray);
+            windowInfo.style.marginTop = 5;
+            _palletContainer.Add(windowInfo);
         }
     }
 }
