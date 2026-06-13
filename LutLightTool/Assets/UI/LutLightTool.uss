@@ -79,6 +79,7 @@
     border-width: 1px;
     border-color: #ffffff;
     border-radius: 2px;
+    cursor: link;
 }
 
 .position-label {
@@ -147,4 +148,111 @@
 .waiting-label {
     font-size: 20px;
     color: #888888;
+}
+
+/* Color Picker */
+.color-picker-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+}
+
+.color-picker-panel {
+    flex-direction: column;
+    width: 420px;
+    background-color: #2a2a2a;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.picker-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 12px;
+}
+
+.picker-content {
+    flex-direction: row;
+    gap: 15px;
+}
+
+.picker-left {
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sv-picker {
+    width: 180px;
+    height: 180px;
+}
+
+.hue-slider {
+    width: 180px;
+    height: 20px;
+}
+
+.alpha-slider {
+    width: 180px;
+    height: 20px;
+}
+
+.picker-right {
+    flex-direction: column;
+    gap: 10px;
+    width: 180px;
+}
+
+.picker-preview-box {
+    width: 100%;
+    height: 60px;
+    border-width: 1px;
+    border-color: #ffffff;
+    border-radius: 4px;
+}
+
+.picker-rgba-inputs {
+    flex-direction: column;
+    gap: 6px;
+}
+
+.picker-rgba-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.picker-rgba-label {
+    width: 25px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.picker-rgba-input {
+    width: 70px;
+    height: 28px;
+    font-size: 10px;
+}
+
+.picker-buttons {
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.picker-ok {
+    width: 80px;
+    height: 30px;
+}
+
+.picker-cancel {
+    width: 80px;
+    height: 30px;
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,6 +36,22 @@ namespace LutLight2D
         private IntegerField _rInput, _gInput, _bInput, _aInput;
         private Button _interpolateButton;
         private Label _positionLabel;
+
+        // Color picker state
+        private VisualElement _pickerOverlay;
+        private float _pickerH;
+        private float _pickerS;
+        private float _pickerV;
+        private float _pickerA;
+        private Texture2D _svTexture;
+        private Texture2D _hueTexture;
+        private Texture2D _alphaTexture;
+        private VisualElement _svPicker;
+        private VisualElement _hueSlider;
+        private VisualElement _alphaSlider;
+        private VisualElement _pickerPreview;
+        private IntegerField _pickerRInput, _pickerGInput, _pickerBInput, _pickerAInput;
+        private bool _updatingPickerInputs;
 
         private void Awake()
         {
@@ -99,6 +116,10 @@ namespace LutLight2D
             if (_interpolateButton != null)
                 _interpolateButton.RegisterCallback<ClickEvent>(OnInterpolateClicked);
 
+            // Color picker callback
+            if (_selectedColorPreview != null)
+                _selectedColorPreview.RegisterCallback<ClickEvent>(OnColorPreviewClicked);
+
             // Initialize
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.value = true;
@@ -111,6 +132,7 @@ namespace LutLight2D
         private void OnDisable()
         {
             StopAllCoroutines();
+            CloseColorPicker();
 
             if (_uploadButton != null)
                 _uploadButton.UnregisterCallback<ClickEvent>(OnUploadClicked);
@@ -576,6 +598,311 @@ namespace LutLight2D
             windowInfo.style.color = new StyleColor(Color.gray);
             windowInfo.style.marginTop = 5;
             _palletContainer.Add(windowInfo);
+        }
+
+        // ── Color Picker ──────────────────────────────────────────────────────
+
+        private void OnColorPreviewClicked(ClickEvent evt)
+        {
+            if (_colorPallet.Count == 0) return;
+            if (_selectedRow == 0) return; // readonly base row
+            if (_selectedRow >= _colorPallet.Count || _selectedColumn >= _colorPallet[_selectedRow].Count) return;
+
+            OpenColorPicker(_colorPallet[_selectedRow][_selectedColumn]);
+        }
+
+        private void OpenColorPicker(Color initialColor)
+        {
+            CloseColorPicker();
+
+            var root = _uiDocument.rootVisualElement;
+
+            // Convert initial color to HSV
+            Color.RGBToHSV(initialColor, out _pickerH, out _pickerS, out _pickerV);
+            _pickerA = initialColor.a;
+
+            // Overlay
+            _pickerOverlay = new VisualElement();
+            _pickerOverlay.name = "color-picker-overlay";
+            _pickerOverlay.AddToClassList("color-picker-overlay");
+            _pickerOverlay.RegisterCallback<ClickEvent>(evt =>
+            {
+                // Close if clicking the overlay backdrop itself
+                if (evt.target == _pickerOverlay)
+                    CloseColorPicker();
+            });
+
+            // Panel
+            var panel = new VisualElement();
+            panel.name = "color-picker-panel";
+            panel.AddToClassList("color-picker-panel");
+            panel.RegisterCallback<ClickEvent>(evt => evt.StopPropagation());
+
+            // Title
+            var title = new Label("Color Picker");
+            title.AddToClassList("picker-title");
+            panel.Add(title);
+
+            // Content row
+            var content = new VisualElement();
+            content.AddToClassList("picker-content");
+
+            // Left: SV picker + hue + alpha
+            var left = new VisualElement();
+            left.AddToClassList("picker-left");
+
+            // SV Picker
+            _svPicker = new VisualElement();
+            _svPicker.AddToClassList("sv-picker");
+            _svTexture = new Texture2D(180, 180, TextureFormat.RGBA32, false);
+            _svTexture.filterMode = FilterMode.Bilinear;
+            _svPicker.style.backgroundImage = new StyleBackground(_svTexture);
+            RegisterPickerPointerEvents(_svPicker, OnSVDrag);
+            left.Add(_svPicker);
+
+            // Hue Slider
+            _hueSlider = new VisualElement();
+            _hueSlider.AddToClassList("hue-slider");
+            _hueTexture = new Texture2D(180, 20, TextureFormat.RGBA32, false);
+            _hueTexture.filterMode = FilterMode.Bilinear;
+            _hueSlider.style.backgroundImage = new StyleBackground(_hueTexture);
+            RegisterPickerPointerEvents(_hueSlider, OnHueDrag);
+            left.Add(_hueSlider);
+
+            // Alpha Slider
+            _alphaSlider = new VisualElement();
+            _alphaSlider.AddToClassList("alpha-slider");
+            _alphaTexture = new Texture2D(180, 20, TextureFormat.RGBA32, false);
+            _alphaTexture.filterMode = FilterMode.Bilinear;
+            _alphaSlider.style.backgroundImage = new StyleBackground(_alphaTexture);
+            RegisterPickerPointerEvents(_alphaSlider, OnAlphaDrag);
+            left.Add(_alphaSlider);
+
+            content.Add(left);
+
+            // Right: preview + RGBA inputs
+            var right = new VisualElement();
+            right.AddToClassList("picker-right");
+
+            _pickerPreview = new VisualElement();
+            _pickerPreview.AddToClassList("picker-preview-box");
+            right.Add(_pickerPreview);
+
+            var rgbaInputs = new VisualElement();
+            rgbaInputs.AddToClassList("picker-rgba-inputs");
+
+            _pickerRInput = CreatePickerInput(rgbaInputs, "R:");
+            _pickerGInput = CreatePickerInput(rgbaInputs, "G:");
+            _pickerBInput = CreatePickerInput(rgbaInputs, "B:");
+            _pickerAInput = CreatePickerInput(rgbaInputs, "A:");
+
+            right.Add(rgbaInputs);
+            content.Add(right);
+
+            panel.Add(content);
+
+            // Buttons
+            var buttons = new VisualElement();
+            buttons.AddToClassList("picker-buttons");
+
+            var okButton = new Button(() =>
+            {
+                ApplyPickerColor();
+                CloseColorPicker();
+            });
+            okButton.text = "OK";
+            okButton.AddToClassList("picker-ok");
+            buttons.Add(okButton);
+
+            var cancelButton = new Button(() => CloseColorPicker());
+            cancelButton.text = "Cancel";
+            cancelButton.AddToClassList("picker-cancel");
+            buttons.Add(cancelButton);
+
+            panel.Add(buttons);
+            _pickerOverlay.Add(panel);
+            root.Add(_pickerOverlay);
+
+            UpdatePickerDisplay();
+        }
+
+        private IntegerField CreatePickerInput(VisualElement container, string label)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("picker-rgba-row");
+
+            var lbl = new Label(label);
+            lbl.AddToClassList("picker-rgba-label");
+            row.Add(lbl);
+
+            var input = new IntegerField();
+            input.AddToClassList("picker-rgba-input");
+            input.RegisterCallback<ChangeEvent<int>>(OnPickerInputChanged);
+            row.Add(input);
+
+            container.Add(row);
+            return input;
+        }
+
+        private void RegisterPickerPointerEvents(VisualElement element, Action<float, float> onDrag)
+        {
+            element.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                element.CapturePointer(evt.pointerId);
+                var localPos = element.WorldToLocal(evt.position);
+                onDrag(localPos.x, localPos.y);
+            });
+            element.RegisterCallback<PointerMoveEvent>(evt =>
+            {
+                if (!element.HasPointerCapture(evt.pointerId)) return;
+                var localPos = element.WorldToLocal(evt.position);
+                onDrag(localPos.x, localPos.y);
+            });
+            element.RegisterCallback<PointerUpEvent>(evt =>
+            {
+                element.ReleasePointer(evt.pointerId);
+            });
+        }
+
+        private void OnSVDrag(float localX, float localY)
+        {
+            float w = _svPicker.resolvedStyle.width;
+            float h = _svPicker.resolvedStyle.height;
+            if (w <= 0 || h <= 0) return;
+
+            _pickerS = Mathf.Clamp01(localX / w);
+            _pickerV = Mathf.Clamp01(1f - localY / h);
+
+            UpdatePickerDisplay();
+        }
+
+        private void OnHueDrag(float localX, float localY)
+        {
+            float w = _hueSlider.resolvedStyle.width;
+            if (w <= 0) return;
+
+            _pickerH = Mathf.Clamp01(localX / w);
+            UpdatePickerDisplay();
+        }
+
+        private void OnAlphaDrag(float localX, float localY)
+        {
+            float w = _alphaSlider.resolvedStyle.width;
+            if (w <= 0) return;
+
+            _pickerA = Mathf.Clamp01(localX / w);
+            UpdatePickerDisplay();
+        }
+
+        private void OnPickerInputChanged(ChangeEvent<int> evt)
+        {
+            if (_updatingPickerInputs) return;
+
+            int r = Mathf.Clamp(_pickerRInput.value, 0, 255);
+            int g = Mathf.Clamp(_pickerGInput.value, 0, 255);
+            int b = Mathf.Clamp(_pickerBInput.value, 0, 255);
+            int a = Mathf.Clamp(_pickerAInput.value, 0, 255);
+
+            Color c = new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+            Color.RGBToHSV(c, out _pickerH, out _pickerS, out _pickerV);
+            _pickerA = c.a;
+
+            UpdatePickerDisplay();
+        }
+
+        private void UpdatePickerDisplay()
+        {
+            Color currentColor = Color.HSVToRGB(_pickerH, _pickerS, _pickerV);
+            currentColor.a = _pickerA;
+
+            // Generate SV texture
+            for (int y = 0; y < 180; y++)
+            {
+                for (int x = 0; x < 180; x++)
+                {
+                    float s = x / 179f;
+                    float v = 1f - y / 179f;
+                    Color pixel = Color.HSVToRGB(_pickerH, s, v);
+                    pixel.a = 1f;
+                    _svTexture.SetPixel(x, y, pixel);
+                }
+            }
+            _svTexture.Apply();
+
+            // Generate hue texture
+            for (int y = 0; y < 20; y++)
+            {
+                for (int x = 0; x < 180; x++)
+                {
+                    float h = x / 179f;
+                    Color pixel = Color.HSVToRGB(h, 1f, 1f);
+                    pixel.a = 1f;
+                    _hueTexture.SetPixel(x, y, pixel);
+                }
+            }
+            _hueTexture.Apply();
+
+            // Generate alpha texture
+            for (int y = 0; y < 20; y++)
+            {
+                for (int x = 0; x < 180; x++)
+                {
+                    float a = x / 179f;
+                    Color pixel = currentColor;
+                    pixel.a = a;
+                    _alphaTexture.SetPixel(x, y, pixel);
+                }
+            }
+            _alphaTexture.Apply();
+
+            // Update preview
+            if (_pickerPreview != null)
+                _pickerPreview.style.backgroundColor = new StyleColor(currentColor);
+
+            // Update RGBA inputs
+            _updatingPickerInputs = true;
+            if (_pickerRInput != null) _pickerRInput.value = Mathf.RoundToInt(currentColor.r * 255);
+            if (_pickerGInput != null) _pickerGInput.value = Mathf.RoundToInt(currentColor.g * 255);
+            if (_pickerBInput != null) _pickerBInput.value = Mathf.RoundToInt(currentColor.b * 255);
+            if (_pickerAInput != null) _pickerAInput.value = Mathf.RoundToInt(currentColor.a * 255);
+            _updatingPickerInputs = false;
+        }
+
+        private void ApplyPickerColor()
+        {
+            if (_colorPallet.Count == 0) return;
+            if (_selectedRow == 0) return;
+            if (_selectedRow >= _colorPallet.Count || _selectedColumn >= _colorPallet[_selectedRow].Count) return;
+
+            Color pickedColor = Color.HSVToRGB(_pickerH, _pickerS, _pickerV);
+            pickedColor.a = _pickerA;
+
+            _colorPallet[_selectedRow][_selectedColumn] = pickedColor;
+
+            // Update main RGBA inputs
+            if (_rInput != null) _rInput.value = Mathf.RoundToInt(pickedColor.r * 255);
+            if (_gInput != null) _gInput.value = Mathf.RoundToInt(pickedColor.g * 255);
+            if (_bInput != null) _bInput.value = Mathf.RoundToInt(pickedColor.b * 255);
+            if (_aInput != null) _aInput.value = Mathf.RoundToInt(pickedColor.a * 255);
+
+            // Update main preview
+            if (_selectedColorPreview != null)
+                _selectedColorPreview.style.backgroundColor = new StyleColor(pickedColor);
+
+            DrawColorPallet();
+        }
+
+        private void CloseColorPicker()
+        {
+            if (_pickerOverlay != null)
+            {
+                _pickerOverlay.RemoveFromHierarchy();
+                _pickerOverlay = null;
+            }
+
+            if (_svTexture != null) { Destroy(_svTexture); _svTexture = null; }
+            if (_hueTexture != null) { Destroy(_hueTexture); _hueTexture = null; }
+            if (_alphaTexture != null) { Destroy(_alphaTexture); _alphaTexture = null; }
         }
     }
 }
