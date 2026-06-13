@@ -1,0 +1,33 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:VisualElement class="root">
+        <!-- Left Panel (2/5) -->
+        <ui:VisualElement class="left-panel">
+            <ui:Label text="LutLight Tool" class="title" />
+
+            <ui:Button name="upload-button" text="Upload" class="upload-button" />
+
+            <ui:VisualElement class="shadow-controls">
+                <ui:Label text="Shadow Degree" class="section-title" />
+                <ui:VisualElement class="shadow-input-row">
+                    <ui:Toggle name="shadow-degree-toggle" text="Enable" />
+                    <ui:Label text="Degree:" />
+                    <ui:TextField name="shadow-degree-input" value="2" class="degree-input" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:Label name="info-label" text="" class="info-label" />
+
+            <ui:ScrollView class="pallet-scroll">
+                <ui:VisualElement name="pallet-container" class="pallet-container" />
+            </ui:ScrollView>
+        </ui:VisualElement>
+
+        <!-- Right Panel (3/5) -->
+        <ui:VisualElement class="right-panel">
+            <ui:Label text="Preview" class="section-title" />
+            <ui:VisualElement name="preview-container" class="preview-container">
+                <ui:Label name="waiting-label" text="Waiting..." class="waiting-label" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
