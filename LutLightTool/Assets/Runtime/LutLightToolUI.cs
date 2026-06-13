@@ -1110,8 +1110,8 @@ namespace LutLight2D
             _pointLight.lightType = Light2D.LightType.Point;
             _pointLight.color = Color.white;
             _pointLight.intensity = _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f;
-            _pointLight.pointLightOuterRadius = halfMaxSize * 0.8f;
-            _pointLight.pointLightInnerRadius = 0f;
+            _pointLight.pointLightOuterRadius = 25f;
+            _pointLight.pointLightInnerRadius = 5f;
             _pointLight.blendStyleIndex = 0; // Multiply blend
 
             // Setup Main Camera for pixel-perfect rendering
