@@ -36,12 +36,21 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:Button name="interpolate-button" text="Interpolate" class="interpolate-button" />
+                <ui:Button name="bake-button" text="Bake" class="bake-button" />
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement class="right-panel">
             <ui:Label text="Preview" class="section-title" />
             <ui:VisualElement name="preview-container" class="preview-container">
                 <ui:Label name="waiting-label" text="Waiting..." class="waiting-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="light-controls">
+                <ui:Label text="Light Controls" class="section-title" />
+                <ui:VisualElement class="light-slider-row">
+                    <ui:Label text="Intensity:" class="light-label" />
+                    <ui:Slider name="light-intensity-slider" low-value="0" high-value="3" value="1" class="light-slider" />
+                    <ui:Label name="light-intensity-value" text="1.0" class="light-value-label" />
+                </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement class="pallet-section">
                 <ui:Label text="Color Pallet (Row 0 = Base, Readonly)" class="section-title" />

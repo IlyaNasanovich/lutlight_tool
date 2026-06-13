@@ -1,3 +1,7 @@
 {
-	"name": "LutLight2D"
+	"name": "LutLight2D",
+	"references": [
+		"Unity.RenderPipelines.Universal.Runtime",
+		"Unity.RenderPipelines.Universal.2D.Runtime"
+	]
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UIElements;
 
 namespace LutLight2D
@@ -52,6 +53,18 @@ namespace LutLight2D
         private VisualElement _pickerPreview;
         private IntegerField _pickerRInput, _pickerGInput, _pickerBInput, _pickerAInput;
         private bool _updatingPickerInputs;
+
+        // Bake and light
+        private Button _bakeButton;
+        private Slider _lightIntensitySlider;
+        private Label _lightIntensityValue;
+        private GameObject _spriteObject;
+        private Light2D _pointLight;
+        private Material _lutMaterial;
+        private Texture2D _lutTexture;
+        private Camera _previewCamera;
+        private RenderTexture _previewRT;
+        private bool _isDraggingLight;
 
         private void Awake()
         {
@@ -120,6 +133,17 @@ namespace LutLight2D
             if (_selectedColorPreview != null)
                 _selectedColorPreview.RegisterCallback<ClickEvent>(OnColorPreviewClicked);
 
+            // Bake and light callbacks
+            _bakeButton = root.Q<Button>("bake-button");
+            _lightIntensitySlider = root.Q<Slider>("light-intensity-slider");
+            _lightIntensityValue = root.Q<Label>("light-intensity-value");
+
+            if (_bakeButton != null)
+                _bakeButton.RegisterCallback<ClickEvent>(OnBakeClicked);
+
+            if (_lightIntensitySlider != null)
+                _lightIntensitySlider.RegisterCallback<ChangeEvent<float>>(OnLightIntensityChanged);
+
             // Initialize
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.value = true;
@@ -133,6 +157,7 @@ namespace LutLight2D
         {
             StopAllCoroutines();
             CloseColorPicker();
+            DestroySceneObjects();
 
             if (_uploadButton != null)
                 _uploadButton.UnregisterCallback<ClickEvent>(OnUploadClicked);
@@ -903,6 +928,285 @@ namespace LutLight2D
             if (_svTexture != null) { Destroy(_svTexture); _svTexture = null; }
             if (_hueTexture != null) { Destroy(_hueTexture); _hueTexture = null; }
             if (_alphaTexture != null) { Destroy(_alphaTexture); _alphaTexture = null; }
+        }
+
+        // ── Bake & Scene ──────────────────────────────────────────────────────
+
+        private void OnBakeClicked(ClickEvent evt)
+        {
+            if (_colorPallet.Count == 0 || _spriteAtlas == null) return;
+
+            BakeLut();
+            CreateSceneObjects();
+        }
+
+        private void BakeLut()
+        {
+            int shadowDegree = _colorPallet.Count;
+            int colorCount = _colorPallet[0].Count;
+            int lutSize = colorCount <= 16 ? 16 : colorCount <= 32 ? 32 : 64;
+
+            int width = lutSize * lutSize;
+            int height = lutSize;
+
+            // Build identity LUT
+            var identityLut = new Color[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float r = x % lutSize / (lutSize - 1f);
+                    float g = y / (lutSize - 1f);
+                    float b = (x / lutSize) / (lutSize - 1f);
+                    identityLut[y * width + x] = new Color(r, g, b, 1f);
+                }
+            }
+
+            // Index: map each LUT pixel to nearest palette base color
+            var indexedColors = new Color[width * height];
+            for (int i = 0; i < identityLut.Length; i++)
+            {
+                Color lutColor = identityLut[i];
+                float bestDist = float.MaxValue;
+                int bestIdx = 0;
+
+                for (int c = 0; c < colorCount; c++)
+                {
+                    Color paletteColor = _colorPallet[0][c];
+                    float dr = lutColor.r - paletteColor.r;
+                    float dg = lutColor.g - paletteColor.g;
+                    float db = lutColor.b - paletteColor.b;
+                    // Luminance-weighted distance (rec601)
+                    float dist = (0.299f * dr + 0.587f * dg + 0.114f * db);
+                    // Use channel distance weighted by luminance coefficients
+                    float d = Mathf.Abs(0.299f * dr) + Mathf.Abs(0.587f * dg) + Mathf.Abs(0.114f * db);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        bestIdx = c;
+                    }
+                }
+
+                indexedColors[i] = _colorPallet[0][bestIdx];
+            }
+
+            // Find shapes: for each palette color, collect LUT positions
+            var shapes = new List<List<int>>();
+            for (int c = 0; c < colorCount; c++)
+            {
+                var shape = new List<int>();
+                Color paletteColor = _colorPallet[0][c];
+                for (int i = 0; i < indexedColors.Length; i++)
+                {
+                    if (indexedColors[i] == paletteColor)
+                        shape.Add(i);
+                }
+                shapes.Add(shape);
+            }
+
+            // Generate LUT texture with shadow grades
+            int texHeight = height * shadowDegree;
+            var pixels = new Color[width * texHeight];
+            // Initialize with identity LUT rows
+            for (int row = 0; row < shadowDegree; row++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int destY = row * height + y;
+                        pixels[destY * width + x] = identityLut[y * width + x];
+                    }
+                }
+            }
+
+            // Apply palette colors to each grade row
+            for (int gradeRow = 0; gradeRow < shadowDegree; gradeRow++)
+            {
+                int yOffset = gradeRow * height;
+                for (int c = 0; c < colorCount; c++)
+                {
+                    Color gradeColor = _colorPallet[gradeRow][c];
+                    foreach (int pos in shapes[c])
+                    {
+                        int srcY = pos / width;
+                        int srcX = pos % width;
+                        int destY = yOffset + srcY;
+                        pixels[destY * width + srcX] = gradeColor;
+                    }
+                }
+            }
+
+            // Create texture
+            if (_lutTexture != null) Destroy(_lutTexture);
+            _lutTexture = new Texture2D(width, texHeight, TextureFormat.RGBA32, false, false);
+            _lutTexture.filterMode = FilterMode.Point;
+            _lutTexture.SetPixels(pixels);
+            _lutTexture.Apply();
+
+            // Create material
+            var shader = Shader.Find("Shader Graphs/LutLight");
+            if (shader == null)
+            {
+                Debug.LogError("LutLight shader not found!");
+                return;
+            }
+
+            if (_lutMaterial != null) Destroy(_lutMaterial);
+            _lutMaterial = new Material(shader);
+            _lutMaterial.SetTexture("_Lut", _lutTexture);
+            _lutMaterial.SetFloat("_Grades", shadowDegree);
+            _lutMaterial.SetInt("_LUT_SIZE", lutSize);
+            _lutMaterial.SetFloat("_Light_Impact", _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f);
+
+            if (_infoLabel != null)
+                _infoLabel.text = $"Baked: {width}x{texHeight} LUT, {colorCount} colors, {shadowDegree} grades";
+        }
+
+        private void CreateSceneObjects()
+        {
+            DestroySceneObjects();
+
+            var tex = _spriteAtlas;
+            float pixelsPerUnit = 100f;
+            float spriteWorldWidth = tex.width / pixelsPerUnit;
+            float spriteWorldHeight = tex.height / pixelsPerUnit;
+            float halfMaxSize = Mathf.Max(spriteWorldWidth, spriteWorldHeight) * 0.5f;
+
+            // Create sprite object
+            _spriteObject = new GameObject("BakedSprite");
+            _spriteObject.transform.position = Vector3.zero;
+
+            var sr = _spriteObject.AddComponent<SpriteRenderer>();
+            sr.material = _lutMaterial;
+            sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), pixelsPerUnit);
+            sr.sprite.texture.filterMode = FilterMode.Point;
+
+            // Create point light
+            var lightObj = new GameObject("PointLight2D");
+            lightObj.transform.position = new Vector3(halfMaxSize * 0.5f, halfMaxSize * 0.5f, 0f);
+
+            _pointLight = lightObj.AddComponent<Light2D>();
+            _pointLight.lightType = Light2D.LightType.Point;
+            _pointLight.color = Color.white;
+            _pointLight.intensity = _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f;
+            _pointLight.pointLightOuterRadius = halfMaxSize * 2f;
+            _pointLight.pointLightInnerRadius = 0f;
+            _pointLight.blendStyleIndex = 0;
+
+            // Create preview camera rendering to a RenderTexture
+            int rtWidth = (int)_previewContainer.resolvedStyle.width;
+            int rtHeight = (int)_previewContainer.resolvedStyle.height;
+            if (rtWidth < 1) rtWidth = 512;
+            if (rtHeight < 1) rtHeight = 256;
+
+            _previewRT = new RenderTexture(rtWidth, rtHeight, 16, RenderTextureFormat.Default);
+            _previewRT.Create();
+
+            var camObj = new GameObject("PreviewCamera");
+            camObj.transform.position = new Vector3(0, 0, -10);
+
+            _previewCamera = camObj.AddComponent<Camera>();
+            _previewCamera.orthographic = true;
+            _previewCamera.orthographicSize = halfMaxSize * 1.2f;
+            _previewCamera.targetTexture = _previewRT;
+            _previewCamera.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
+            _previewCamera.clearFlags = CameraClearFlags.SolidColor;
+            _previewCamera.cullingMask = -1; // Everything
+            _previewCamera.allowHDR = false;
+
+            // Add URP camera data so 2D lighting works
+            var urpCamData = camObj.AddComponent<UniversalAdditionalCameraData>();
+            urpCamData.renderType = CameraRenderType.Base;
+            urpCamData.renderShadows = false;
+            urpCamData.requiresColorOption = CameraOverrideOption.Off;
+            urpCamData.requiresDepthOption = CameraOverrideOption.Off;
+
+            // Show render texture in preview container
+            _previewContainer.Clear();
+            var previewImage = new Image();
+            previewImage.image = _previewRT;
+            previewImage.scaleMode = ScaleMode.ScaleToFit;
+            _previewContainer.Add(previewImage);
+
+            // Register pointer events for light dragging
+            _previewContainer.RegisterCallback<PointerDownEvent>(OnPreviewPointerDown);
+            _previewContainer.RegisterCallback<PointerMoveEvent>(OnPreviewPointerMove);
+            _previewContainer.RegisterCallback<PointerUpEvent>(OnPreviewPointerUp);
+        }
+
+        private void DestroySceneObjects()
+        {
+            if (_spriteObject != null) { Destroy(_spriteObject); _spriteObject = null; }
+            if (_pointLight != null) { Destroy(_pointLight.gameObject); _pointLight = null; }
+            if (_lutMaterial != null) { Destroy(_lutMaterial); _lutMaterial = null; }
+            if (_lutTexture != null) { Destroy(_lutTexture); _lutTexture = null; }
+
+            if (_previewCamera != null) { Destroy(_previewCamera.gameObject); _previewCamera = null; }
+            if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); _previewRT = null; }
+
+            if (_previewContainer != null)
+            {
+                _previewContainer.UnregisterCallback<PointerDownEvent>(OnPreviewPointerDown);
+                _previewContainer.UnregisterCallback<PointerMoveEvent>(OnPreviewPointerMove);
+                _previewContainer.UnregisterCallback<PointerUpEvent>(OnPreviewPointerUp);
+            }
+        }
+
+        private void OnPreviewPointerDown(PointerDownEvent evt)
+        {
+            if (_pointLight == null) return;
+
+            _isDraggingLight = true;
+            _previewContainer.CapturePointer(evt.pointerId);
+            MoveLightToPointer(evt.position);
+        }
+
+        private void OnPreviewPointerMove(PointerMoveEvent evt)
+        {
+            if (!_isDraggingLight || _pointLight == null) return;
+            if (!_previewContainer.HasPointerCapture(evt.pointerId)) return;
+
+            MoveLightToPointer(evt.position);
+        }
+
+        private void OnPreviewPointerUp(PointerUpEvent evt)
+        {
+            _isDraggingLight = false;
+            if (_previewContainer.HasPointerCapture(evt.pointerId))
+                _previewContainer.ReleasePointer(evt.pointerId);
+        }
+
+        private void MoveLightToPointer(Vector2 panelPos)
+        {
+            if (_previewCamera == null || _previewContainer == null || _pointLight == null) return;
+
+            // Get local position within the preview container
+            Vector2 localPos = _previewContainer.WorldToLocal(panelPos);
+            float containerW = _previewContainer.resolvedStyle.width;
+            float containerH = _previewContainer.resolvedStyle.height;
+
+            // Convert to UV (0-1), Y is down in panel coords
+            float uvX = Mathf.Clamp01(localPos.x / containerW);
+            float uvY = Mathf.Clamp01(1f - localPos.y / containerH); // flip Y for camera
+
+            // Convert to viewport -> world via preview camera
+            Vector3 viewportPos = new Vector3(uvX, uvY, 0f);
+            Vector3 worldPos = _previewCamera.ViewportToWorldPoint(viewportPos);
+            worldPos.z = 0;
+            _pointLight.transform.position = worldPos;
+        }
+
+        private void OnLightIntensityChanged(ChangeEvent<float> evt)
+        {
+            if (_lightIntensityValue != null)
+                _lightIntensityValue.text = evt.newValue.ToString("F1");
+
+            if (_pointLight != null)
+                _pointLight.intensity = evt.newValue;
+
+            if (_lutMaterial != null)
+                _lutMaterial.SetFloat("_Light_Impact", evt.newValue);
         }
     }
 }
