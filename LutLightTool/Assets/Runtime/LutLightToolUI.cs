@@ -1075,6 +1075,11 @@ namespace LutLight2D
                       $"LUT center pixel: {_lutTexture.GetPixel(width / 2, texHeight / 2)}");
             Debug.Log($"  Material shader valid: {shader.isSupported}, " +
                       $"pass count: {_lutMaterial.passCount}");
+
+            // Verify LUT has different colors per grade
+            Color bottomColor = _lutTexture.GetPixel(0, 0);            // shadow grade
+            Color topColor = _lutTexture.GetPixel(0, texHeight - 1);   // base grade
+            Debug.Log($"  LUT bottom (shadow): {bottomColor}, LUT top (base): {topColor}, different: {bottomColor != topColor}");
         }
 
         private void CreateSceneObjects()
@@ -1082,42 +1087,48 @@ namespace LutLight2D
             DestroySceneObjects();
 
             var tex = _spriteAtlas;
-            float pixelsPerUnit = 100f;
+            float pixelsPerUnit = 1f; // 1 pixel = 1 unit for pixel-perfect
             float spriteWorldWidth = tex.width / pixelsPerUnit;
             float spriteWorldHeight = tex.height / pixelsPerUnit;
             float halfMaxSize = Mathf.Max(spriteWorldWidth, spriteWorldHeight) * 0.5f;
 
-            // Create sprite object in the scene
+            // Create sprite object
             _spriteObject = new GameObject("BakedSprite");
             _spriteObject.transform.position = Vector3.zero;
 
             var sr = _spriteObject.AddComponent<SpriteRenderer>();
-            sr.material = _lutMaterial;
+            sr.sharedMaterial = _lutMaterial;
             sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), pixelsPerUnit);
             sr.sprite.texture.filterMode = FilterMode.Point;
+            sr.sprite.texture.wrapMode = TextureWrapMode.Clamp;
 
-            // Create point light in the scene
+            // Create point light
             var lightObj = new GameObject("PointLight2D");
-            lightObj.transform.position = new Vector3(halfMaxSize * 0.5f, halfMaxSize * 0.5f, 0f);
+            lightObj.transform.position = Vector3.zero;
 
             _pointLight = lightObj.AddComponent<Light2D>();
             _pointLight.lightType = Light2D.LightType.Point;
             _pointLight.color = Color.white;
             _pointLight.intensity = _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f;
-            _pointLight.pointLightOuterRadius = halfMaxSize * 2f;
+            _pointLight.pointLightOuterRadius = halfMaxSize * 0.8f;
             _pointLight.pointLightInnerRadius = 0f;
-            _pointLight.blendStyleIndex = 0;
+            _pointLight.blendStyleIndex = 0; // Multiply blend
 
-            // Adjust Main Camera to fit the sprite
+            // Setup Main Camera for pixel-perfect rendering
             var cam = Camera.main;
-            if (cam != null && cam.orthographic)
+            if (cam != null)
             {
                 cam.transform.position = new Vector3(0, 0, -10);
-                // Fit sprite vertically with padding, account for aspect ratio
-                float aspect = cam.aspect;
-                float sizeV = spriteWorldHeight * 0.55f; // 10% padding vertically
-                float sizeH = spriteWorldWidth * 0.55f / aspect;
-                cam.orthographicSize = Mathf.Max(sizeV, sizeH);
+                cam.orthographic = true;
+                cam.orthographicSize = halfMaxSize;
+                cam.gateFit = Camera.GateFitMode.Overscan;
+
+                // Snap camera to pixel grid
+                float ppu = pixelsPerUnit;
+                float unitsPerPixel = 1f / ppu;
+                float snapX = Mathf.Round(cam.transform.position.x / unitsPerPixel) * unitsPerPixel;
+                float snapY = Mathf.Round(cam.transform.position.y / unitsPerPixel) * unitsPerPixel;
+                cam.transform.position = new Vector3(snapX, snapY, -10);
             }
 
             // Make preview container transparent so scene shows through
