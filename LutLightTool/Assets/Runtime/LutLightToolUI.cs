@@ -62,8 +62,6 @@ namespace LutLight2D
         private Light2D _pointLight;
         private Material _lutMaterial;
         private Texture2D _lutTexture;
-        private Camera _previewCamera;
-        private RenderTexture _previewRT;
         private bool _isDraggingLight;
 
         private void Awake()
@@ -158,6 +156,9 @@ namespace LutLight2D
             StopAllCoroutines();
             CloseColorPicker();
             DestroySceneObjects();
+
+            if (_lutMaterial != null) { Destroy(_lutMaterial); _lutMaterial = null; }
+            if (_lutTexture != null) { Destroy(_lutTexture); _lutTexture = null; }
 
             if (_uploadButton != null)
                 _uploadButton.UnregisterCallback<ClickEvent>(OnUploadClicked);
@@ -973,13 +974,11 @@ namespace LutLight2D
                 for (int c = 0; c < colorCount; c++)
                 {
                     Color paletteColor = _colorPallet[0][c];
-                    float dr = lutColor.r - paletteColor.r;
-                    float dg = lutColor.g - paletteColor.g;
-                    float db = lutColor.b - paletteColor.b;
-                    // Luminance-weighted distance (rec601)
-                    float dist = (0.299f * dr + 0.587f * dg + 0.114f * db);
-                    // Use channel distance weighted by luminance coefficients
-                    float d = Mathf.Abs(0.299f * dr) + Mathf.Abs(0.587f * dg) + Mathf.Abs(0.114f * db);
+                    float dr = (lutColor.r - paletteColor.r) * 0.299f;
+                    float dg = (lutColor.g - paletteColor.g) * 0.587f;
+                    float db = (lutColor.b - paletteColor.b) * 0.114f;
+                    // Weighted Euclidean distance (rec601) — matches LutGenerator
+                    float d = Mathf.Sqrt(dr * dr + dg * dg + db * db);
                     if (d < bestDist)
                     {
                         bestDist = d;
@@ -1005,25 +1004,14 @@ namespace LutLight2D
             }
 
             // Generate LUT texture with shadow grades
+            // Row order: deepest shadow at bottom, lightest at top (matches LutGenerator)
             int texHeight = height * shadowDegree;
             var pixels = new Color[width * texHeight];
-            // Initialize with identity LUT rows
-            for (int row = 0; row < shadowDegree; row++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int destY = row * height + y;
-                        pixels[destY * width + x] = identityLut[y * width + x];
-                    }
-                }
-            }
 
-            // Apply palette colors to each grade row
             for (int gradeRow = 0; gradeRow < shadowDegree; gradeRow++)
             {
-                int yOffset = gradeRow * height;
+                // Reverse mapping: gradeRow 0 -> bottom of texture, gradeRow N -> top
+                int yOffset = (shadowDegree - 1 - gradeRow) * height;
                 for (int c = 0; c < colorCount; c++)
                 {
                     Color gradeColor = _colorPallet[gradeRow][c];
@@ -1039,7 +1027,8 @@ namespace LutLight2D
 
             // Create texture
             if (_lutTexture != null) Destroy(_lutTexture);
-            _lutTexture = new Texture2D(width, texHeight, TextureFormat.RGBA32, false, false);
+            _lutTexture = new Texture2D(width, texHeight, TextureFormat.RGBA32, false, true);
+
             _lutTexture.filterMode = FilterMode.Point;
             _lutTexture.SetPixels(pixels);
             _lutTexture.Apply();
@@ -1058,9 +1047,34 @@ namespace LutLight2D
             _lutMaterial.SetFloat("_Grades", shadowDegree);
             _lutMaterial.SetInt("_LUT_SIZE", lutSize);
             _lutMaterial.SetFloat("_Light_Impact", _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f);
+            _lutMaterial.SetFloat("_Texel_Size", 1f);
+
+            // Clear all keywords first, then set the correct ones
+            _lutMaterial.shaderKeywords = new string[0];
+            _lutMaterial.EnableKeyword(lutSize switch
+            {
+                16  => "_LUT_SIZE_X16",
+                32  => "_LUT_SIZE_X32",
+                64  => "_LUT_SIZE_X64",
+                _   => "_LUT_SIZE_X16"
+            });
+            _lutMaterial.EnableKeyword("_SMOOTH");
+            _lutMaterial.EnableKeyword("_GRADING_CHROMA");
 
             if (_infoLabel != null)
                 _infoLabel.text = $"Baked: {width}x{texHeight} LUT, {colorCount} colors, {shadowDegree} grades";
+
+            // Debug: verify material setup
+            Debug.Log($"LutLight Bake: shader={shader.name}, lut={_lutTexture.width}x{_lutTexture.height}, " +
+                      $"grades={shadowDegree}, lutSize={lutSize}, keywords={string.Join(", ", _lutMaterial.shaderKeywords)}");
+            Debug.Log($"  _Lut property: {_lutMaterial.GetTexture("_Lut") != null}, " +
+                      $"_Grades={_lutMaterial.GetFloat("_Grades")}, " +
+                      $"_LUT_SIZE={_lutMaterial.GetInt("_LUT_SIZE")}, " +
+                      $"_Light_Impact={_lutMaterial.GetFloat("_Light_Impact")}");
+            Debug.Log($"  LUT first pixel: {_lutTexture.GetPixel(0, 0)}, " +
+                      $"LUT center pixel: {_lutTexture.GetPixel(width / 2, texHeight / 2)}");
+            Debug.Log($"  Material shader valid: {shader.isSupported}, " +
+                      $"pass count: {_lutMaterial.passCount}");
         }
 
         private void CreateSceneObjects()
@@ -1073,7 +1087,7 @@ namespace LutLight2D
             float spriteWorldHeight = tex.height / pixelsPerUnit;
             float halfMaxSize = Mathf.Max(spriteWorldWidth, spriteWorldHeight) * 0.5f;
 
-            // Create sprite object
+            // Create sprite object in the scene
             _spriteObject = new GameObject("BakedSprite");
             _spriteObject.transform.position = Vector3.zero;
 
@@ -1082,7 +1096,7 @@ namespace LutLight2D
             sr.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), pixelsPerUnit);
             sr.sprite.texture.filterMode = FilterMode.Point;
 
-            // Create point light
+            // Create point light in the scene
             var lightObj = new GameObject("PointLight2D");
             lightObj.transform.position = new Vector3(halfMaxSize * 0.5f, halfMaxSize * 0.5f, 0f);
 
@@ -1094,56 +1108,38 @@ namespace LutLight2D
             _pointLight.pointLightInnerRadius = 0f;
             _pointLight.blendStyleIndex = 0;
 
-            // Create preview camera rendering to a RenderTexture
-            int rtWidth = (int)_previewContainer.resolvedStyle.width;
-            int rtHeight = (int)_previewContainer.resolvedStyle.height;
-            if (rtWidth < 1) rtWidth = 512;
-            if (rtHeight < 1) rtHeight = 256;
+            // Adjust Main Camera to fit the sprite
+            var cam = Camera.main;
+            if (cam != null && cam.orthographic)
+            {
+                cam.transform.position = new Vector3(0, 0, -10);
+                // Fit sprite vertically with padding, account for aspect ratio
+                float aspect = cam.aspect;
+                float sizeV = spriteWorldHeight * 0.55f; // 10% padding vertically
+                float sizeH = spriteWorldWidth * 0.55f / aspect;
+                cam.orthographicSize = Mathf.Max(sizeV, sizeH);
+            }
 
-            _previewRT = new RenderTexture(rtWidth, rtHeight, 16, RenderTextureFormat.Default);
-            _previewRT.Create();
-
-            var camObj = new GameObject("PreviewCamera");
-            camObj.transform.position = new Vector3(0, 0, -10);
-
-            _previewCamera = camObj.AddComponent<Camera>();
-            _previewCamera.orthographic = true;
-            _previewCamera.orthographicSize = halfMaxSize * 1.2f;
-            _previewCamera.targetTexture = _previewRT;
-            _previewCamera.backgroundColor = new Color(0.15f, 0.15f, 0.15f);
-            _previewCamera.clearFlags = CameraClearFlags.SolidColor;
-            _previewCamera.cullingMask = -1; // Everything
-            _previewCamera.allowHDR = false;
-
-            // Add URP camera data so 2D lighting works
-            var urpCamData = camObj.AddComponent<UniversalAdditionalCameraData>();
-            urpCamData.renderType = CameraRenderType.Base;
-            urpCamData.renderShadows = false;
-            urpCamData.requiresColorOption = CameraOverrideOption.Off;
-            urpCamData.requiresDepthOption = CameraOverrideOption.Off;
-
-            // Show render texture in preview container
-            _previewContainer.Clear();
-            var previewImage = new Image();
-            previewImage.image = _previewRT;
-            previewImage.scaleMode = ScaleMode.ScaleToFit;
-            _previewContainer.Add(previewImage);
+            // Make preview container transparent so scene shows through
+            if (_previewContainer != null)
+            {
+                _previewContainer.Clear();
+                _previewContainer.style.backgroundColor = new StyleColor(Color.clear);
+            }
 
             // Register pointer events for light dragging
-            _previewContainer.RegisterCallback<PointerDownEvent>(OnPreviewPointerDown);
-            _previewContainer.RegisterCallback<PointerMoveEvent>(OnPreviewPointerMove);
-            _previewContainer.RegisterCallback<PointerUpEvent>(OnPreviewPointerUp);
+            if (_previewContainer != null)
+            {
+                _previewContainer.RegisterCallback<PointerDownEvent>(OnPreviewPointerDown);
+                _previewContainer.RegisterCallback<PointerMoveEvent>(OnPreviewPointerMove);
+                _previewContainer.RegisterCallback<PointerUpEvent>(OnPreviewPointerUp);
+            }
         }
 
         private void DestroySceneObjects()
         {
             if (_spriteObject != null) { Destroy(_spriteObject); _spriteObject = null; }
             if (_pointLight != null) { Destroy(_pointLight.gameObject); _pointLight = null; }
-            if (_lutMaterial != null) { Destroy(_lutMaterial); _lutMaterial = null; }
-            if (_lutTexture != null) { Destroy(_lutTexture); _lutTexture = null; }
-
-            if (_previewCamera != null) { Destroy(_previewCamera.gameObject); _previewCamera = null; }
-            if (_previewRT != null) { _previewRT.Release(); Destroy(_previewRT); _previewRT = null; }
 
             if (_previewContainer != null)
             {
@@ -1179,20 +1175,12 @@ namespace LutLight2D
 
         private void MoveLightToPointer(Vector2 panelPos)
         {
-            if (_previewCamera == null || _previewContainer == null || _pointLight == null) return;
+            var cam = Camera.main;
+            if (cam == null || _pointLight == null) return;
 
-            // Get local position within the preview container
-            Vector2 localPos = _previewContainer.WorldToLocal(panelPos);
-            float containerW = _previewContainer.resolvedStyle.width;
-            float containerH = _previewContainer.resolvedStyle.height;
-
-            // Convert to UV (0-1), Y is down in panel coords
-            float uvX = Mathf.Clamp01(localPos.x / containerW);
-            float uvY = Mathf.Clamp01(1f - localPos.y / containerH); // flip Y for camera
-
-            // Convert to viewport -> world via preview camera
-            Vector3 viewportPos = new Vector3(uvX, uvY, 0f);
-            Vector3 worldPos = _previewCamera.ViewportToWorldPoint(viewportPos);
+            // Convert panel position to screen position (flip Y)
+            Vector3 screenPos = new Vector3(panelPos.x, Screen.height - panelPos.y, 0f);
+            Vector3 worldPos = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cam.transform.position.z));
             worldPos.z = 0;
             _pointLight.transform.position = worldPos;
         }

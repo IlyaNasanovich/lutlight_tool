@@ -16,7 +16,7 @@
     flex-direction: column;
     width: 60%;
     padding: 10px;
-    background-color: #1a1a1a;
+    background-color: transparent;
 }
 
 .title {
@@ -166,6 +166,9 @@
 .pallet-section {
     flex-grow: 1;
     flex-direction: column;
+    background-color: rgba(26, 26, 26, 0.85);
+    padding: 8px;
+    border-radius: 4px;
 }
 
 .pallet-scroll {
