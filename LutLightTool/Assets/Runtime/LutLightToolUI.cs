@@ -1046,7 +1046,7 @@ namespace LutLight2D
             _lutMaterial.SetTexture("_Lut", _lutTexture);
             _lutMaterial.SetFloat("_Grades", shadowDegree);
             _lutMaterial.SetInt("_LUT_SIZE", lutSize);
-            _lutMaterial.SetFloat("_Light_Impact", _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f);
+            _lutMaterial.SetFloat("_Light_Impact", 0f);
             _lutMaterial.SetFloat("_Texel_Size", 1f);
 
             // Clear all keywords first, then set the correct ones
@@ -1058,8 +1058,9 @@ namespace LutLight2D
                 64  => "_LUT_SIZE_X64",
                 _   => "_LUT_SIZE_X16"
             });
-            _lutMaterial.EnableKeyword("_SMOOTH");
             _lutMaterial.EnableKeyword("_GRADING_CHROMA");
+            _lutMaterial.EnableKeyword("_PIXELATED");
+            _lutMaterial.SetFloat("_Texel_Size", 1f);
 
             if (_infoLabel != null)
                 _infoLabel.text = $"Baked: {width}x{texHeight} LUT, {colorCount} colors, {shadowDegree} grades";
@@ -1110,8 +1111,10 @@ namespace LutLight2D
             _pointLight.lightType = Light2D.LightType.Point;
             _pointLight.color = Color.white;
             _pointLight.intensity = _lightIntensitySlider != null ? _lightIntensitySlider.value : 1f;
-            _pointLight.pointLightOuterRadius = 25f;
-            _pointLight.pointLightInnerRadius = 5f;
+            _pointLight.intensity = 1f;
+            float radius = _lightIntensitySlider != null ? _lightIntensitySlider.value : 25f;
+            _pointLight.pointLightOuterRadius = radius;
+            _pointLight.pointLightInnerRadius = radius * 0.25f;
             _pointLight.blendStyleIndex = 0; // Multiply blend
 
             // Setup Main Camera for pixel-perfect rendering
@@ -1199,13 +1202,13 @@ namespace LutLight2D
         private void OnLightIntensityChanged(ChangeEvent<float> evt)
         {
             if (_lightIntensityValue != null)
-                _lightIntensityValue.text = evt.newValue.ToString("F1");
+                _lightIntensityValue.text = Mathf.RoundToInt(evt.newValue).ToString();
 
             if (_pointLight != null)
-                _pointLight.intensity = evt.newValue;
-
-            if (_lutMaterial != null)
-                _lutMaterial.SetFloat("_Light_Impact", evt.newValue);
+            {
+                _pointLight.pointLightOuterRadius = evt.newValue;
+                _pointLight.pointLightInnerRadius = evt.newValue * 0.25f;
+            }
         }
     }
 }

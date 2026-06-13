@@ -48,8 +48,8 @@
                 <ui:Label text="Light Controls" class="section-title" />
                 <ui:VisualElement class="light-slider-row">
                     <ui:Label text="Intensity:" class="light-label" />
-                    <ui:Slider name="light-intensity-slider" low-value="0" high-value="3" value="1" class="light-slider" />
-                    <ui:Label name="light-intensity-value" text="1.0" class="light-value-label" />
+                    <ui:Slider name="light-intensity-slider" low-value="1" high-value="50" value="25" class="light-slider" />
+                    <ui:Label name="light-intensity-value" text="25" class="light-value-label" />
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:VisualElement class="pallet-section">
