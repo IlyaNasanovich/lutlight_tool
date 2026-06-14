@@ -170,6 +170,9 @@ namespace LutLight2D
             // regardless of which child element currently has focus
             root.RegisterCallback<KeyDownEvent>(OnKeyDown, TrickleDown.TrickleDown);
             root.focusable = true;
+
+            if (_previewContainer != null)
+                _previewContainer.RegisterCallback<GeometryChangedEvent>(OnPreviewGeometryChanged);
         }
 
         private void OnDisable()
@@ -191,6 +194,8 @@ namespace LutLight2D
                 _downloadButton.UnregisterCallback<ClickEvent>(OnDownloadClicked);
             if (_restoreButton != null)
                 _restoreButton.UnregisterCallback<ClickEvent>(OnRestoreClicked);
+            if (_previewContainer != null)
+                _previewContainer.UnregisterCallback<GeometryChangedEvent>(OnPreviewGeometryChanged);
         }
 
         private void OnKeyDown(KeyDownEvent evt)
@@ -1279,12 +1284,18 @@ namespace LutLight2D
                 _previewContainer.RegisterCallback<PointerMoveEvent>(OnPreviewPointerMove);
                 _previewContainer.RegisterCallback<PointerUpEvent>(OnPreviewPointerUp);
             }
+
+            UpdatePreviewCameraViewport();
         }
 
         private void DestroySceneObjects()
         {
             if (_spriteObject != null) { Destroy(_spriteObject); _spriteObject = null; }
             if (_pointLight != null) { Destroy(_pointLight.gameObject); _pointLight = null; }
+
+            var cam = Camera.main;
+            if (cam != null)
+                cam.pixelRect = new Rect(0, 0, Screen.width, Screen.height);
 
             if (_previewContainer != null)
             {
@@ -1321,30 +1332,49 @@ namespace LutLight2D
                 _previewContainer.ReleasePointer(evt.pointerId);
         }
 
+        private void OnPreviewGeometryChanged(GeometryChangedEvent evt)
+        {
+            UpdatePreviewCameraViewport();
+        }
+
+        private float GetPanelPixelsPerPoint()
+        {
+            float pixelsPerPoint = _previewContainer?.panel?.scaledPixelsPerPoint ?? 1f;
+            return pixelsPerPoint > 0f ? pixelsPerPoint : 1f;
+        }
+
+        private void UpdatePreviewCameraViewport()
+        {
+            var cam = Camera.main;
+            if (cam == null || _previewContainer == null) return;
+
+            Rect previewBounds = _previewContainer.worldBound;
+            if (previewBounds.width <= 0f || previewBounds.height <= 0f) return;
+
+            float pixelsPerPoint = GetPanelPixelsPerPoint();
+            cam.pixelRect = new Rect(
+                previewBounds.x * pixelsPerPoint,
+                Screen.height - (previewBounds.y + previewBounds.height) * pixelsPerPoint,
+                previewBounds.width * pixelsPerPoint,
+                previewBounds.height * pixelsPerPoint
+            );
+        }
+
         private void MoveLightToPointer(Vector2 panelPos)
         {
             var cam = Camera.main;
             if (cam == null || _pointLight == null) return;
             if (_previewContainer == null) return;
 
-            // panelPos is in the container's local coordinates (top-left origin)
-            // containerBound is in the same scaled panel coordinate space
-            // Convert to screen coordinates using the panel's device scaling
-            var containerBound = _previewContainer.worldBound;
-            float deviceScale = _uiDocument.panelSettings.scale;
-            if (deviceScale <= 0) deviceScale = 1f;
+            Vector2 localPos = _previewContainer.WorldToLocal(panelPos);
+            Rect contentRect = _previewContainer.contentRect;
+            if (contentRect.width <= 0f || contentRect.height <= 0f) return;
 
-            // Absolute panel position of the pointer, then convert to screen pixels
-            float screenX = (containerBound.x + panelPos.x) / deviceScale;
-            float screenY = Screen.height - (containerBound.y + panelPos.y) / deviceScale;
+            float viewportX = Mathf.Clamp01(localPos.x / contentRect.width);
+            float viewportY = Mathf.Clamp01(1f - (localPos.y / contentRect.height));
 
-            // Camera is fixed at (0,0,-10), convert screen to world
-            float halfH = cam.orthographicSize;
-            float halfW = halfH * cam.aspect;
-            float worldX = (screenX / Screen.width - 0.5f) * 2f * halfW;
-            float worldY = (screenY / Screen.height - 0.5f) * 2f * halfH;
-
-            _pointLight.transform.position = new Vector3(worldX, worldY, 0);
+            Vector3 worldPos = cam.ViewportToWorldPoint(new Vector3(viewportX, viewportY, -cam.transform.position.z));
+            _pointLight.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
         }
 
         private void OnLightIntensityChanged(ChangeEvent<float> evt)
