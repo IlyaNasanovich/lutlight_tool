@@ -22,8 +22,8 @@ jobs:
       - name: Cache Unity Library
         uses: actions/cache@v3
         with:
-          path: Library
-          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          path: LutLightTool/Library
+          key: Library-${{ hashFiles('LutLightTool/Assets/**', 'LutLightTool/Packages/**', 'LutLightTool/ProjectSettings/**') }}
           restore-keys: |
             Library-
 
@@ -33,6 +33,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
+          projectPath: LutLightTool
           targetPlatform: WebGL
           buildName: "LutLightTool"
           allowDirtyBuild: false
@@ -40,7 +41,7 @@ jobs:
       - name: Prepare Pages artifact
         run: |
           mkdir -p pages_artifact
-          cp -r build/WebGL/LutLightTool/* pages_artifact/
+          cp -r LutLightTool/build/WebGL/LutLightTool/* pages_artifact/
           touch pages_artifact/.nojekyll
 
       - name: Upload Pages artifact
