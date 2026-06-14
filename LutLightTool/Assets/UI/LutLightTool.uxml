@@ -37,6 +37,10 @@
                 </ui:VisualElement>
                 <ui:Button name="interpolate-button" text="Interpolate" class="interpolate-button" />
                 <ui:Button name="bake-button" text="Bake" class="bake-button" />
+                <ui:VisualElement class="download-restore-row">
+                    <ui:Button name="download-button" text="Download" class="download-button" />
+                    <ui:Button name="restore-button" text="Restore" class="restore-button" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement class="right-panel">

@@ -56,6 +56,8 @@ namespace LutLight2D
 
         // Bake and light
         private Button _bakeButton;
+        private Button _downloadButton;
+        private Button _restoreButton;
         private Slider _lightIntensitySlider;
         private Label _lightIntensityValue;
         private GameObject _spriteObject;
@@ -139,6 +141,16 @@ namespace LutLight2D
             if (_bakeButton != null)
                 _bakeButton.RegisterCallback<ClickEvent>(OnBakeClicked);
 
+            // Download and Restore callbacks
+            _downloadButton = root.Q<Button>("download-button");
+            _restoreButton = root.Q<Button>("restore-button");
+
+            if (_downloadButton != null)
+                _downloadButton.RegisterCallback<ClickEvent>(OnDownloadClicked);
+
+            if (_restoreButton != null)
+                _restoreButton.RegisterCallback<ClickEvent>(OnRestoreClicked);
+
             if (_lightIntensitySlider != null)
                 _lightIntensitySlider.RegisterCallback<ChangeEvent<float>>(OnLightIntensityChanged);
 
@@ -166,6 +178,10 @@ namespace LutLight2D
                 _shadowDegreeToggle.UnregisterCallback<ChangeEvent<bool>>(OnShadowDegreeToggleChanged);
             if (_shadowDegreeInput != null)
                 _shadowDegreeInput.UnregisterCallback<ChangeEvent<int>>(OnShadowDegreeInputChanged);
+            if (_downloadButton != null)
+                _downloadButton.UnregisterCallback<ClickEvent>(OnDownloadClicked);
+            if (_restoreButton != null)
+                _restoreButton.UnregisterCallback<ClickEvent>(OnRestoreClicked);
         }
 
         private void OnKeyDown(KeyDownEvent evt)
@@ -1209,6 +1225,259 @@ namespace LutLight2D
                 _pointLight.pointLightOuterRadius = evt.newValue;
                 _pointLight.pointLightInnerRadius = evt.newValue * 0.25f;
             }
+        }
+
+        // ── Download & Restore ────────────────────────────────────────────────
+
+        private void OnDownloadClicked(ClickEvent evt)
+        {
+            if (_colorPallet.Count == 0) return;
+
+#if UNITY_EDITOR
+            string path = UnityEditor.EditorUtility.SaveFilePanel("Save Color Pallet", "", "color_pallet", "png");
+            if (!string.IsNullOrEmpty(path))
+            {
+                DownloadPalette(path);
+            }
+#else
+            ShowSaveFileDialog();
+#endif
+        }
+
+#if !UNITY_EDITOR
+        private void ShowSaveFileDialog()
+        {
+            var root = _uiDocument.rootVisualElement;
+
+            var dialog = new VisualElement();
+            dialog.name = "save-file-dialog";
+            dialog.style.position = Position.Absolute;
+            dialog.style.left = 0;
+            dialog.style.top = 0;
+            dialog.style.right = 0;
+            dialog.style.bottom = 0;
+            dialog.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0.8f));
+            dialog.style.justifyContent = Justify.Center;
+            dialog.style.alignItems = Align.Center;
+
+            var content = new VisualElement();
+            content.style.width = 400;
+            content.style.backgroundColor = new StyleColor(new Color(0.3f, 0.3f, 0.3f));
+            content.style.paddingTop = 20;
+            content.style.paddingBottom = 20;
+            content.style.paddingLeft = 20;
+            content.style.paddingRight = 20;
+            content.style.borderTopLeftRadius = 8;
+            content.style.borderTopRightRadius = 8;
+            content.style.borderBottomLeftRadius = 8;
+            content.style.borderBottomRightRadius = 8;
+
+            var titleLabel = new Label("Enter save path for color pallet (.png):");
+            titleLabel.style.color = Color.white;
+            titleLabel.style.fontSize = 14;
+            titleLabel.style.marginBottom = 10;
+            content.Add(titleLabel);
+
+            var input = new TextField();
+            input.value = "color_pallet.png";
+            content.Add(input);
+
+            var buttonRow = new VisualElement();
+            buttonRow.style.flexDirection = FlexDirection.Row;
+            buttonRow.style.justifyContent = Justify.FlexEnd;
+            buttonRow.style.marginTop = 15;
+            buttonRow.style.gap = 10;
+
+            var okButton = new Button(() =>
+            {
+                string path = input.value;
+                root.Remove(dialog);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    DownloadPalette(path);
+                }
+            });
+            okButton.text = "OK";
+            okButton.style.width = 80;
+            buttonRow.Add(okButton);
+
+            var cancelButton = new Button(() => root.Remove(dialog));
+            cancelButton.text = "Cancel";
+            cancelButton.style.width = 80;
+            buttonRow.Add(cancelButton);
+
+            content.Add(buttonRow);
+            dialog.Add(content);
+            root.Add(dialog);
+        }
+#endif
+
+        private void DownloadPalette(string path)
+        {
+            if (_colorPallet.Count == 0) return;
+
+            int width = _colorPallet[0].Count;
+            int height = _colorPallet.Count;
+
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            texture.filterMode = FilterMode.Point;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    // Row 0 in texture = base colors (top), row N = deepest shadow (bottom)
+                    int palletRow = height - 1 - y;
+                    texture.SetPixel(x, y, _colorPallet[palletRow][x]);
+                }
+            }
+
+            texture.Apply();
+            byte[] pngData = texture.EncodeToPNG();
+            File.WriteAllBytes(path, pngData);
+            Destroy(texture);
+
+            if (_infoLabel != null)
+                _infoLabel.text = $"Saved: {path}";
+        }
+
+        private void OnRestoreClicked(ClickEvent evt)
+        {
+#if UNITY_EDITOR
+            string path = UnityEditor.EditorUtility.OpenFilePanel("Open Color Pallet", "", "png");
+            if (!string.IsNullOrEmpty(path))
+            {
+                RestorePalette(path);
+            }
+#else
+            ShowOpenFileDialog();
+#endif
+        }
+
+#if !UNITY_EDITOR
+        private void ShowOpenFileDialog()
+        {
+            var root = _uiDocument.rootVisualElement;
+
+            var dialog = new VisualElement();
+            dialog.name = "open-file-dialog";
+            dialog.style.position = Position.Absolute;
+            dialog.style.left = 0;
+            dialog.style.top = 0;
+            dialog.style.right = 0;
+            dialog.style.bottom = 0;
+            dialog.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0.8f));
+            dialog.style.justifyContent = Justify.Center;
+            dialog.style.alignItems = Align.Center;
+
+            var content = new VisualElement();
+            content.style.width = 400;
+            content.style.backgroundColor = new StyleColor(new Color(0.3f, 0.3f, 0.3f));
+            content.style.paddingTop = 20;
+            content.style.paddingBottom = 20;
+            content.style.paddingLeft = 20;
+            content.style.paddingRight = 20;
+            content.style.borderTopLeftRadius = 8;
+            content.style.borderTopRightRadius = 8;
+            content.style.borderBottomLeftRadius = 8;
+            content.style.borderBottomRightRadius = 8;
+
+            var titleLabel = new Label("Enter path to color pallet (.png):");
+            titleLabel.style.color = Color.white;
+            titleLabel.style.fontSize = 14;
+            titleLabel.style.marginBottom = 10;
+            content.Add(titleLabel);
+
+            var input = new TextField();
+            input.value = "";
+            content.Add(input);
+
+            var buttonRow = new VisualElement();
+            buttonRow.style.flexDirection = FlexDirection.Row;
+            buttonRow.style.justifyContent = Justify.FlexEnd;
+            buttonRow.style.marginTop = 15;
+            buttonRow.style.gap = 10;
+
+            var okButton = new Button(() =>
+            {
+                string path = input.value;
+                root.Remove(dialog);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    RestorePalette(path);
+                }
+            });
+            okButton.text = "OK";
+            okButton.style.width = 80;
+            buttonRow.Add(okButton);
+
+            var cancelButton = new Button(() => root.Remove(dialog));
+            cancelButton.text = "Cancel";
+            cancelButton.style.width = 80;
+            buttonRow.Add(cancelButton);
+
+            content.Add(buttonRow);
+            dialog.Add(content);
+            root.Add(dialog);
+        }
+#endif
+
+        private void RestorePalette(string path)
+        {
+            if (!File.Exists(path))
+            {
+                if (_infoLabel != null)
+                    _infoLabel.text = "File not found";
+                return;
+            }
+
+            byte[] fileData = File.ReadAllBytes(path);
+            var texture = new Texture2D(2, 2);
+            if (!texture.LoadImage(fileData))
+            {
+                Destroy(texture);
+                if (_infoLabel != null)
+                    _infoLabel.text = "Failed to load image";
+                return;
+            }
+
+            LoadPaletteFromPng(texture);
+            Destroy(texture);
+        }
+
+        private void LoadPaletteFromPng(Texture2D texture)
+        {
+            int width = texture.width;
+            int height = texture.height;
+
+            _colorPallet = new List<List<Color>>();
+
+            for (int y = 0; y < height; y++)
+            {
+                var row = new List<Color>();
+                for (int x = 0; x < width; x++)
+                {
+                    // Row 0 in texture = base colors (top), row N = deepest shadow (bottom)
+                    int palletRow = height - 1 - y;
+                    row.Add(texture.GetPixel(x, palletRow));
+                }
+                _colorPallet.Add(row);
+            }
+
+            // Update shadow degree to match loaded palette
+            _shadowDegree = height;
+            if (_shadowDegreeInput != null)
+                _shadowDegreeInput.value = height;
+
+            // Reset selection
+            _selectedColumn = 0;
+            _selectedRow = 0;
+
+            if (_infoLabel != null)
+                _infoLabel.text = $"Restored: {width} colors, {height} levels";
+
+            DrawColorPallet();
+            UpdateSelectionDisplay();
         }
     }
 }
