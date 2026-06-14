@@ -502,8 +502,6 @@ namespace LutLight2D
             buttonRow.style.flexDirection = FlexDirection.Row;
             buttonRow.style.justifyContent = Justify.FlexEnd;
             buttonRow.style.marginTop = 15;
-            buttonRow.style.gap = 10;
-
             var okButton = new Button(() =>
             {
                 string path = input.value;
@@ -520,6 +518,7 @@ namespace LutLight2D
             var cancelButton = new Button(() => root.Remove(dialog));
             cancelButton.text = "Cancel";
             cancelButton.style.width = 80;
+            cancelButton.style.marginLeft = 10;
             buttonRow.Add(cancelButton);
 
             content.Add(buttonRow);
@@ -1472,8 +1471,6 @@ namespace LutLight2D
             buttonRow.style.flexDirection = FlexDirection.Row;
             buttonRow.style.justifyContent = Justify.FlexEnd;
             buttonRow.style.marginTop = 15;
-            buttonRow.style.gap = 10;
-
             var okButton = new Button(() =>
             {
                 string path = input.value;
@@ -1490,6 +1487,7 @@ namespace LutLight2D
             var cancelButton = new Button(() => root.Remove(dialog));
             cancelButton.text = "Cancel";
             cancelButton.style.width = 80;
+            cancelButton.style.marginLeft = 10;
             buttonRow.Add(cancelButton);
 
             content.Add(buttonRow);
@@ -1582,8 +1580,6 @@ namespace LutLight2D
             buttonRow.style.flexDirection = FlexDirection.Row;
             buttonRow.style.justifyContent = Justify.FlexEnd;
             buttonRow.style.marginTop = 15;
-            buttonRow.style.gap = 10;
-
             var okButton = new Button(() =>
             {
                 string path = input.value;
@@ -1600,6 +1596,7 @@ namespace LutLight2D
             var cancelButton = new Button(() => root.Remove(dialog));
             cancelButton.text = "Cancel";
             cancelButton.style.width = 80;
+            cancelButton.style.marginLeft = 10;
             buttonRow.Add(cancelButton);
 
             content.Add(buttonRow);
