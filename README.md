@@ -4,6 +4,8 @@ A 2D artist-oriented tool for creating color palettes with shadow gradients and 
 
 Built on top of the [LutLight2D](https://github.com/NullTale/LutLight2D) system by [NullTale](https://twitter.com/NullTale/).
 
+![Lut Light Tool](content/lutlighttool.gif)
+
 ## Features
 
 - **Sprite Atlas Import** -- Load any PNG sprite atlas and automatically extract unique colors, sorted by HSV
