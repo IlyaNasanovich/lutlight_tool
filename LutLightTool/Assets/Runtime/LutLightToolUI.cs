@@ -66,6 +66,14 @@ namespace LutLight2D
         private Texture2D _lutTexture;
         private bool _isDraggingLight;
 
+        // Pan and zoom state
+        private Vector2 _panOffset = Vector2.zero;
+        private float _zoomLevel = 1f;
+        private const float ZoomMin = 0.25f;
+        private const float ZoomMax = 4f;
+        private const float PanStep = 20f;
+        private const float ZoomStep = 0.25f;
+
         private void Awake()
         {
             if (_uiDocument == null)
@@ -158,8 +166,9 @@ namespace LutLight2D
             if (_shadowDegreeToggle != null)
                 _shadowDegreeToggle.value = true;
 
-            // Register keyboard input
-            root.RegisterCallback<KeyDownEvent>(OnKeyDown);
+            // Register keyboard input in TrickleDown phase so it fires on root
+            // regardless of which child element currently has focus
+            root.RegisterCallback<KeyDownEvent>(OnKeyDown, TrickleDown.TrickleDown);
             root.focusable = true;
         }
 
@@ -186,6 +195,49 @@ namespace LutLight2D
 
         private void OnKeyDown(KeyDownEvent evt)
         {
+            // Zoom controls (Q/E) — work regardless of palette state
+            if (evt.keyCode == KeyCode.Q)
+            {
+                ZoomSprite(-ZoomStep);
+                evt.StopPropagation();
+                return;
+            }
+            if (evt.keyCode == KeyCode.E)
+            {
+                ZoomSprite(ZoomStep);
+                evt.StopPropagation();
+                return;
+            }
+
+            // Shift + WASD/Arrows = pan sprite atlas
+            if (evt.shiftKey)
+            {
+                switch (evt.keyCode)
+                {
+                    case KeyCode.W:
+                    case KeyCode.UpArrow:
+                        PanSprite(0, PanStep);
+                        evt.StopPropagation();
+                        return;
+                    case KeyCode.S:
+                    case KeyCode.DownArrow:
+                        PanSprite(0, -PanStep);
+                        evt.StopPropagation();
+                        return;
+                    case KeyCode.A:
+                    case KeyCode.LeftArrow:
+                        PanSprite(-PanStep, 0);
+                        evt.StopPropagation();
+                        return;
+                    case KeyCode.D:
+                    case KeyCode.RightArrow:
+                        PanSprite(PanStep, 0);
+                        evt.StopPropagation();
+                        return;
+                }
+            }
+
+            // Palette navigation (no shift)
             if (_colorPallet.Count == 0) return;
 
             switch (evt.keyCode)
@@ -225,6 +277,71 @@ namespace LutLight2D
             _selectedRow = Mathf.Clamp(_selectedRow + deltaY, 0, maxRow);
 
             UpdateSelectionDisplay();
+        }
+
+        // ── Pan & Zoom ───────────────────────────────────────────────────────
+
+        private void PanSprite(float dx, float dy)
+        {
+            if (_spriteAtlas == null) return;
+
+            float spriteW = _spriteAtlas.width;
+            float spriteH = _spriteAtlas.height;
+            float viewW = spriteW / _zoomLevel;
+            float viewH = spriteH / _zoomLevel;
+
+            // Max pan: sprite edge can reach the center of the view
+            float maxPanX = Mathf.Max(0, (spriteW - viewW) * 0.5f);
+            float maxPanY = Mathf.Max(0, (spriteH - viewH) * 0.5f);
+
+            _panOffset.x = Mathf.Clamp(_panOffset.x + dx, -maxPanX, maxPanX);
+            _panOffset.y = Mathf.Clamp(_panOffset.y + dy, -maxPanY, maxPanY);
+
+            ApplyPanZoom();
+        }
+
+        private void ZoomSprite(float delta)
+        {
+            if (_spriteAtlas == null) return;
+
+            _zoomLevel = Mathf.Clamp(_zoomLevel + delta, ZoomMin, ZoomMax);
+
+            // Re-clamp pan so sprite stays partially visible
+            float spriteW = _spriteAtlas.width;
+            float spriteH = _spriteAtlas.height;
+            float viewW = spriteW / _zoomLevel;
+            float viewH = spriteH / _zoomLevel;
+            float maxPanX = Mathf.Max(0, (spriteW - viewW) * 0.5f);
+            float maxPanY = Mathf.Max(0, (spriteH - viewH) * 0.5f);
+            _panOffset.x = Mathf.Clamp(_panOffset.x, -maxPanX, maxPanX);
+            _panOffset.y = Mathf.Clamp(_panOffset.y, -maxPanY, maxPanY);
+
+            ApplyPanZoom();
+        }
+
+        private void ApplyPanZoom()
+        {
+            var cam = Camera.main;
+            if (cam != null && _spriteObject != null)
+            {
+                // Post-bake: move camera, adjust orthographic size
+                float halfMaxSize = Mathf.Max(_spriteAtlas.width, _spriteAtlas.height) * 0.5f;
+                cam.orthographicSize = halfMaxSize / _zoomLevel;
+                cam.transform.position = new Vector3(_panOffset.x, _panOffset.y, -10);
+            }
+            else if (_previewContainer != null && _previewContainer.childCount > 0)
+            {
+                // Pre-bake: transform the Image element
+                var image = _previewContainer.Children().FirstOrDefault() as Image;
+                if (image != null)
+                {
+                    float scale = _zoomLevel;
+                    image.style.translate = new Translate(
+                        new Length(_panOffset.x, LengthUnit.Pixel),
+                        new Length(-_panOffset.y, LengthUnit.Pixel));
+                    image.style.scale = new Scale(new Vector3(scale, scale, 1f));
+                }
+            }
         }
 
         private void UpdateSelectionDisplay()
@@ -451,6 +568,10 @@ namespace LutLight2D
             _spriteAtlas = new Texture2D(2, 2);
             _spriteAtlas.LoadImage(fileData);
             _spriteAtlas.filterMode = FilterMode.Point;
+
+            // Reset pan/zoom for new sprite
+            _panOffset = Vector2.zero;
+            _zoomLevel = 1f;
 
             // Hide waiting label, show preview
             if (_waitingLabel != null)
@@ -955,6 +1076,10 @@ namespace LutLight2D
 
             BakeLut();
             CreateSceneObjects();
+
+            // Restore keyboard focus to root after baking
+            var root = _uiDocument.rootVisualElement;
+            root.Focus();
         }
 
         private void BakeLut()
@@ -1137,16 +1262,15 @@ namespace LutLight2D
             var cam = Camera.main;
             if (cam != null)
             {
-                cam.transform.position = new Vector3(0, 0, -10);
                 cam.orthographic = true;
-                cam.orthographicSize = halfMaxSize;
+                cam.orthographicSize = halfMaxSize / _zoomLevel;
                 cam.gateFit = Camera.GateFitMode.Overscan;
 
-                // Snap camera to pixel grid
+                // Apply pan offset, snap to pixel grid
                 float ppu = pixelsPerUnit;
                 float unitsPerPixel = 1f / ppu;
-                float snapX = Mathf.Round(cam.transform.position.x / unitsPerPixel) * unitsPerPixel;
-                float snapY = Mathf.Round(cam.transform.position.y / unitsPerPixel) * unitsPerPixel;
+                float snapX = Mathf.Round(_panOffset.x / unitsPerPixel) * unitsPerPixel;
+                float snapY = Mathf.Round(_panOffset.y / unitsPerPixel) * unitsPerPixel;
                 cam.transform.position = new Vector3(snapX, snapY, -10);
             }
 
@@ -1186,6 +1310,9 @@ namespace LutLight2D
             _isDraggingLight = true;
             _previewContainer.CapturePointer(evt.pointerId);
             MoveLightToPointer(evt.position);
+
+            // Keep focus on root so keyboard events (Shift+WASD, Q/E) still work
+            _uiDocument.rootVisualElement.Focus();
         }
 
         private void OnPreviewPointerMove(PointerMoveEvent evt)
@@ -1207,12 +1334,26 @@ namespace LutLight2D
         {
             var cam = Camera.main;
             if (cam == null || _pointLight == null) return;
+            if (_previewContainer == null) return;
 
-            // Convert panel position to screen position (flip Y)
-            Vector3 screenPos = new Vector3(panelPos.x, Screen.height - panelPos.y, 0f);
-            Vector3 worldPos = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cam.transform.position.z));
-            worldPos.z = 0;
-            _pointLight.transform.position = worldPos;
+            // panelPos is in the container's local coordinates (top-left origin)
+            // containerBound is in the same scaled panel coordinate space
+            // Convert to screen coordinates using the panel's device scaling
+            var containerBound = _previewContainer.worldBound;
+            float deviceScale = _uiDocument.panelSettings.scale;
+            if (deviceScale <= 0) deviceScale = 1f;
+
+            // Absolute panel position of the pointer, then convert to screen pixels
+            float screenX = (containerBound.x + panelPos.x) / deviceScale;
+            float screenY = Screen.height - (containerBound.y + panelPos.y) / deviceScale;
+
+            // Convert screen position to world position (orthographic camera)
+            float halfH = cam.orthographicSize;
+            float halfW = halfH * cam.aspect;
+            float worldX = cam.transform.position.x + (screenX / Screen.width - 0.5f) * 2f * halfW;
+            float worldY = cam.transform.position.y + (screenY / Screen.height - 0.5f) * 2f * halfH;
+
+            _pointLight.transform.position = new Vector3(worldX, worldY, 0);
         }
 
         private void OnLightIntensityChanged(ChangeEvent<float> evt)
