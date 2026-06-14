@@ -421,8 +421,8 @@ namespace LutLight2D
             int column = _selectedColumn;
             int rowCount = _colorPallet.Count;
 
-            // Need at least 3 rows (base + 2 shadow levels) to interpolate
-            if (rowCount < 3) return;
+            // Need at least 2 rows (base + 1 shadow level) to interpolate
+            if (rowCount < 2) return;
 
             // Validate column is within bounds for all rows
             for (int i = 0; i < rowCount; i++)
@@ -431,15 +431,15 @@ namespace LutLight2D
                     return;
             }
 
-            // Row 0 is readonly base, interpolate between row 1 and last row
-            Color firstColor = _colorPallet[1][column];
+            // Row 0 is readonly base color, interpolate from base to last row
+            Color baseColor = _colorPallet[0][column];
             Color lastColor = _colorPallet[rowCount - 1][column];
 
-            // Interpolate colors between first and last (skip row 0)
-            for (int i = 2; i < rowCount - 1; i++)
+            // Interpolate all shadow rows (row 1 through last) from base to last
+            for (int i = 1; i < rowCount; i++)
             {
-                float t = (float)(i - 1) / (rowCount - 2);
-                _colorPallet[i][column] = Color.Lerp(firstColor, lastColor, t);
+                float t = (float)i / (rowCount - 1);
+                _colorPallet[i][column] = Color.Lerp(baseColor, lastColor, t);
             }
 
             // Redraw
