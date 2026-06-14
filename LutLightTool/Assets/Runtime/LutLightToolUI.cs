@@ -71,7 +71,7 @@ namespace LutLight2D
         private float _zoomLevel = 1f;
         private const float ZoomMin = 0.25f;
         private const float ZoomMax = 4f;
-        private const float PanStep = 20f;
+        private const float PanStep = 5f;
         private const float ZoomStep = 0.25f;
 
         private void Awake()
@@ -287,12 +287,10 @@ namespace LutLight2D
 
             float spriteW = _spriteAtlas.width;
             float spriteH = _spriteAtlas.height;
-            float viewW = spriteW / _zoomLevel;
-            float viewH = spriteH / _zoomLevel;
 
-            // Max pan: sprite edge can reach the center of the view
-            float maxPanX = Mathf.Max(0, (spriteW - viewW) * 0.5f);
-            float maxPanY = Mathf.Max(0, (spriteH - viewH) * 0.5f);
+            // Max pan: sprite edge can reach the center of the camera view (3x extended)
+            float maxPanX = Mathf.Max(0, spriteW * _zoomLevel * 3f);
+            float maxPanY = Mathf.Max(0, spriteH * _zoomLevel * 3f);
 
             _panOffset.x = Mathf.Clamp(_panOffset.x + dx, -maxPanX, maxPanX);
             _panOffset.y = Mathf.Clamp(_panOffset.y + dy, -maxPanY, maxPanY);
@@ -306,13 +304,11 @@ namespace LutLight2D
 
             _zoomLevel = Mathf.Clamp(_zoomLevel + delta, ZoomMin, ZoomMax);
 
-            // Re-clamp pan so sprite stays partially visible
+            // Re-clamp pan so sprite stays partially visible (3x extended)
             float spriteW = _spriteAtlas.width;
             float spriteH = _spriteAtlas.height;
-            float viewW = spriteW / _zoomLevel;
-            float viewH = spriteH / _zoomLevel;
-            float maxPanX = Mathf.Max(0, (spriteW - viewW) * 0.5f);
-            float maxPanY = Mathf.Max(0, (spriteH - viewH) * 0.5f);
+            float maxPanX = Mathf.Max(0, spriteW * _zoomLevel * 1.5f);
+            float maxPanY = Mathf.Max(0, spriteH * _zoomLevel * 1.5f);
             _panOffset.x = Mathf.Clamp(_panOffset.x, -maxPanX, maxPanX);
             _panOffset.y = Mathf.Clamp(_panOffset.y, -maxPanY, maxPanY);
 
@@ -321,13 +317,11 @@ namespace LutLight2D
 
         private void ApplyPanZoom()
         {
-            var cam = Camera.main;
-            if (cam != null && _spriteObject != null)
+            if (_spriteObject != null)
             {
-                // Post-bake: move camera, adjust orthographic size
-                float halfMaxSize = Mathf.Max(_spriteAtlas.width, _spriteAtlas.height) * 0.5f;
-                cam.orthographicSize = halfMaxSize / _zoomLevel;
-                cam.transform.position = new Vector3(_panOffset.x, _panOffset.y, -10);
+                // Post-bake: move and scale the sprite GameObject, camera stays fixed
+                _spriteObject.transform.position = new Vector3(_panOffset.x, _panOffset.y, 0);
+                _spriteObject.transform.localScale = Vector3.one * _zoomLevel;
             }
             else if (_previewContainer != null && _previewContainer.childCount > 0)
             {
@@ -335,11 +329,10 @@ namespace LutLight2D
                 var image = _previewContainer.Children().FirstOrDefault() as Image;
                 if (image != null)
                 {
-                    float scale = _zoomLevel;
                     image.style.translate = new Translate(
                         new Length(_panOffset.x, LengthUnit.Pixel),
                         new Length(-_panOffset.y, LengthUnit.Pixel));
-                    image.style.scale = new Scale(new Vector3(scale, scale, 1f));
+                    image.style.scale = new Scale(new Vector3(_zoomLevel, _zoomLevel, 1f));
                 }
             }
         }
@@ -1258,21 +1251,19 @@ namespace LutLight2D
             _pointLight.pointLightInnerRadius = radius * 0.25f;
             _pointLight.blendStyleIndex = 0; // Multiply blend
 
-            // Setup Main Camera for pixel-perfect rendering
+            // Setup Main Camera — fixed position, shows full sprite at zoom=1
             var cam = Camera.main;
             if (cam != null)
             {
+                cam.transform.position = new Vector3(0, 0, -10);
                 cam.orthographic = true;
-                cam.orthographicSize = halfMaxSize / _zoomLevel;
+                cam.orthographicSize = halfMaxSize;
                 cam.gateFit = Camera.GateFitMode.Overscan;
-
-                // Apply pan offset, snap to pixel grid
-                float ppu = pixelsPerUnit;
-                float unitsPerPixel = 1f / ppu;
-                float snapX = Mathf.Round(_panOffset.x / unitsPerPixel) * unitsPerPixel;
-                float snapY = Mathf.Round(_panOffset.y / unitsPerPixel) * unitsPerPixel;
-                cam.transform.position = new Vector3(snapX, snapY, -10);
             }
+
+            // Apply pan offset and zoom to sprite
+            _spriteObject.transform.position = new Vector3(_panOffset.x, _panOffset.y, 0);
+            _spriteObject.transform.localScale = Vector3.one * _zoomLevel;
 
             // Make preview container transparent so scene shows through
             if (_previewContainer != null)
@@ -1347,11 +1338,11 @@ namespace LutLight2D
             float screenX = (containerBound.x + panelPos.x) / deviceScale;
             float screenY = Screen.height - (containerBound.y + panelPos.y) / deviceScale;
 
-            // Convert screen position to world position (orthographic camera)
+            // Camera is fixed at (0,0,-10), convert screen to world
             float halfH = cam.orthographicSize;
             float halfW = halfH * cam.aspect;
-            float worldX = cam.transform.position.x + (screenX / Screen.width - 0.5f) * 2f * halfW;
-            float worldY = cam.transform.position.y + (screenY / Screen.height - 0.5f) * 2f * halfH;
+            float worldX = (screenX / Screen.width - 0.5f) * 2f * halfW;
+            float worldY = (screenY / Screen.height - 0.5f) * 2f * halfH;
 
             _pointLight.transform.position = new Vector3(worldX, worldY, 0);
         }
