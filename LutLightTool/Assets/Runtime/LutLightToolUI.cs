@@ -777,6 +777,7 @@ namespace LutLight2D
             CloseColorPicker();
 
             var root = _uiDocument.rootVisualElement;
+            RemoveStaleColorPickerOverlays(root);
 
             // Convert initial color to HSV
             Color.RGBToHSV(initialColor, out _pickerH, out _pickerS, out _pickerV);
@@ -982,7 +983,9 @@ namespace LutLight2D
                 for (int x = 0; x < 180; x++)
                 {
                     float s = x / 179f;
-                    float v = 1f - y / 179f;
+                    // Texture Y grows upward, while local pointer Y grows downward.
+                    // Draw the texture so the visible top edge corresponds to V = 1.
+                    float v = y / 179f;
                     Color pixel = Color.HSVToRGB(_pickerH, s, v);
                     pixel.a = 1f;
                     _svTexture.SetPixel(x, y, pixel);
@@ -1055,15 +1058,36 @@ namespace LutLight2D
 
         private void CloseColorPicker()
         {
+            var root = _uiDocument != null ? _uiDocument.rootVisualElement : null;
+
             if (_pickerOverlay != null)
             {
+                _pickerOverlay.style.display = DisplayStyle.None;
                 _pickerOverlay.RemoveFromHierarchy();
                 _pickerOverlay = null;
             }
 
+            if (root != null)
+                RemoveStaleColorPickerOverlays(root);
+
             if (_svTexture != null) { Destroy(_svTexture); _svTexture = null; }
             if (_hueTexture != null) { Destroy(_hueTexture); _hueTexture = null; }
             if (_alphaTexture != null) { Destroy(_alphaTexture); _alphaTexture = null; }
+
+            _svPicker = null;
+            _hueSlider = null;
+            _alphaSlider = null;
+            _pickerPreview = null;
+            _pickerRInput = null;
+            _pickerGInput = null;
+            _pickerBInput = null;
+            _pickerAInput = null;
+        }
+
+        private void RemoveStaleColorPickerOverlays(VisualElement root)
+        {
+            foreach (var overlay in root.Query<VisualElement>("color-picker-overlay").ToList())
+                overlay.RemoveFromHierarchy();
         }
 
         // ── Bake & Scene ──────────────────────────────────────────────────────
