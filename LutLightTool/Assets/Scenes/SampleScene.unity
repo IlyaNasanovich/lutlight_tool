@@ -288,6 +288,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: LutLight2D::LutLight2D.LutLightToolUI
   _uiDocument: {fileID: 0}
+  _lutShader: {fileID: -6465566751694194690, guid: b569e3defbefdf142b7723c9c4ae592a, type: 3}
 --- !u!114 &789207093
 MonoBehaviour:
   m_ObjectHideFlags: 0

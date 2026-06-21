@@ -1,0 +1,3 @@
+<linker>
+    <assembly fullname="StandaloneFileBrowser" preserve="all"/>
+</linker>
