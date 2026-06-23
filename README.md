@@ -4,6 +4,8 @@ A 2D artist-oriented tool for creating color palettes with shadow gradients and 
 
 Built on top of the [LutLight2D](https://github.com/NullTale/LutLight2D) system by [NullTale](https://twitter.com/NullTale/).
 
+[**Use LutLightTool**](https://lutlighttool.feralfiestakittens.com/)
+
 ![Lut Light Tool](content/lutlighttool.gif)
 
 ## Features
@@ -16,6 +18,35 @@ Built on top of the [LutLight2D](https://github.com/NullTale/LutLight2D) system 
 - **Live 2D Preview** -- Preview the result on your sprite with a draggable 2D point light and adjustable intensity
 - **Pan & Zoom** -- Navigate the preview with Shift+WASD (pan) and Q/E (zoom, 0.25x--4x)
 - **Download & Restore** -- Save your color palette as a PNG and reload it for further editing later
+
+## Keyboard Hotkeys & Controls
+
+### Zoom
+| Key | Action |
+|-----|--------|
+| **Q** | Zoom out (by 0.25x, min 0.25x) |
+| **E** | Zoom in (by 0.25x, max 4x) |
+
+### Palette Navigation (WASD / Arrow Keys)
+| Key | Action |
+|-----|--------|
+| **W** / **Up** | Move selection up |
+| **S** / **Down** | Move selection down |
+| **A** / **Left** | Move selection left |
+| **D** / **Right** | Move selection right |
+
+### Pan (Shift + WASD / Arrow Keys)
+| Key | Action |
+|-----|--------|
+| **Shift + W** / **Shift + Up** | Pan up |
+| **Shift + S** / **Shift + Down** | Pan down |
+| **Shift + A** / **Shift + Left** | Pan left |
+| **Shift + D** / **Shift + Right** | Pan right |
+
+### Light Control
+| Input | Action |
+|-------|--------|
+| **Mouse drag** on preview | Move the 2D point light |
 
 ## Requirements
 
@@ -57,3 +88,4 @@ LutLightTool/
 ## Credits
 
 - [LutLight2D](https://github.com/NullTale/LutLight2D) by [NullTale](https://twitter.com/NullTale/) -- the original LUT-based 2D lighting system for URP
+- [UnityStandaloneFileBrowser](https://github.com/gkngkc/UnityStandaloneFileBrowser) by [gkngkc](https://github.com/gkngkc) -- native file browser for Unity standalone builds
